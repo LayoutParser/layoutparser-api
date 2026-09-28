@@ -30,6 +30,11 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.7" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />
+    <!-- ADR segregação Decrypt/LowCodeRunner (2026-09-25): resiliência (retry + circuit breaker +
+         timeout) do HttpClient do serviço LayoutParserDecrypt — mesmo padrão de degradação
+         graciosa já usado para Redis, mas descriptografia é etapa crítica do pipeline (não
+         opcional), então o circuito só evita martelar um serviço fora do ar. -->
+    <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="10.0.12" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <!-- Leitura de PDF (issue #172, orientações de correção XSD): PdfPig, Apache-2.0, mesma

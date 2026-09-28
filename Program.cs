@@ -468,7 +468,28 @@ try
 
     // Database Services
     builder.Services.AddScoped<ILayoutDatabaseService, LayoutDatabaseService>();
-    builder.Services.AddScoped<IDecryptionService, DecryptionService>();
+
+    // ✅ ADR segregação Decrypt/LowCodeRunner (2026-09-25): HttpClient tipado apontando pro serviço
+    // LayoutParserDecrypt (substitui Process.Start do executável legado local). BaseUrl vazia ⇒
+    // IDecryptionService.IsDecryptorAvailable fica false (mesma semântica do "exe não encontrado"
+    // de antes) — sem BaseAddress, o client nunca tenta conectar. Retry + circuit breaker via Polly
+    // (Microsoft.Extensions.Http.Polly) — descriptografia é etapa crítica do pipeline, não dependência
+    // opcional tipo Redis, então o objetivo do circuito é falhar rápido, não desabilitar o fluxo.
+    var decryptBaseUrl = builder.Configuration["LayoutParserDecrypt:BaseUrl"];
+    var decryptHttpClientBuilder = builder.Services.AddHttpClient<IDecryptionService, DecryptionService>(client =>
+    {
+        if (!string.IsNullOrWhiteSpace(decryptBaseUrl))
+            client.BaseAddress = new Uri(decryptBaseUrl, UriKind.Absolute);
+
+        // Timeout do HttpClient desligado — o timeout defensivo real é o CancellationTokenSource
+        // dedicado dentro de DecryptionService (30s), para distinguir claramente "timeout de
+        // descriptografia" de "timeout genérico de HttpClient" nos logs/exceções.
+        client.Timeout = Timeout.InfiniteTimeSpan;
+    });
+    decryptHttpClientBuilder
+        .AddPolicyHandler(LayoutParserApi.Services.Database.DecryptionResiliencePolicies.GetRetryPolicy())
+        .AddPolicyHandler(LayoutParserApi.Services.Database.DecryptionResiliencePolicies.GetCircuitBreakerPolicy());
+
     builder.Services.AddScoped<MapperDatabaseService>();
     builder.Services.AddScoped<ICachedLayoutService, CachedLayoutService>();
     // ✅ Slice 1 (issue #225/#228): identidade externa → UserId interno + workspace fiscal isolado.
