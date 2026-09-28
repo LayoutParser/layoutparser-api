@@ -1,9 +1,0 @@
-{
-  "schemaVersion": 1,
-  "runId": "run-inut-001",
-  "startedAt": "2026-09-16T23:01:20Z",
-  "finishedAt": "2026-09-16T23:02:53Z",
-  "model": "layoutparser-sysmiddle-dsl:1.5b",
-  "totalCases": 1,
-  "candidates": []
-}
