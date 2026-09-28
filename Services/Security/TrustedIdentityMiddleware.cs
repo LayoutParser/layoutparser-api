@@ -50,7 +50,9 @@ namespace LayoutParserApi.Services.Security
             var remoteIp = context.Connection.RemoteIpAddress;
             var isLoopback = remoteIp != null && IPAddress.IsLoopback(remoteIp);
 
-            if (TrustedIdentityPolicy.ShouldTrust(isLoopback, _options.TrustIdentityFromLoopbackOnly))
+            var inTrustedNetwork = TrustedIdentityPolicy.IsInTrustedNetworks(remoteIp, _options.TrustedProxyNetworks);
+
+            if (TrustedIdentityPolicy.ShouldTrust(isLoopback, _options.TrustIdentityFromLoopbackOnly, inTrustedNetwork))
             {
                 var nome = context.Request.Headers[_options.TrustedUserHeader].ToString().Trim();
 

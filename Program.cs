@@ -52,7 +52,12 @@ try
 
     // ✅ Permite rodar como serviço Windows nativo (substitui o NSSM); integra o host ao
     // ciclo de vida do SCM. Fora do SCM (dotnet run / console) é no-op — zero impacto.
-    builder.Host.UseWindowsService();
+    // Migração Linux (issue #578): UseWindowsService só em Windows; em Linux o UseSystemd integra ao
+    // systemd (Type=notify, logs no journal). Ambos são no-op fora do respectivo gerenciador.
+    if (OperatingSystem.IsWindows())
+        builder.Host.UseWindowsService();
+    else if (OperatingSystem.IsLinux())
+        builder.Host.UseSystemd();
 
     // ✅ Hardening da senha do SQL em repouso (ver docs/architecture/runbook-hardening-senha-sql-em-repouso.md).
     // Por padrão, o ASP.NET Core só carrega user-secrets quando IsDevelopment() é true — o que
@@ -882,6 +887,8 @@ try
     var identityOpt = app.Services.GetRequiredService<IOptions<TrustedIdentityOptions>>().Value;
     if (identityOpt.TrustIdentityFromLoopbackOnly)
     {
+        if (identityOpt.TrustedProxyNetworks.Length > 0)
+            Log.Information("Identidade do BFF também confiada das redes {Networks} (Security__TrustedProxyNetworks).", string.Join(", ", identityOpt.TrustedProxyNetworks));
         Log.Information("Identidade do BFF ATIVA com guarda de loopback (headers {UserHeader}/{RolesHeader}). " +
             "Headers de identidade só são confiados em conexão loopback (127.0.0.1/::1); origem remota é ignorada.",
             identityOpt.TrustedUserHeader, identityOpt.TrustedRolesHeader);

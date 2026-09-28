@@ -1,0 +1,25 @@
+# Fase 3 da migração Linux (issue #578). Instalar em /etc/systemd/system/layoutparser-api.service
+[Unit]
+Description=LayoutParser API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# UseSystemd() no Program.cs habilita a notificação de prontidão (Type=notify) e logs no journal
+Type=notify
+WorkingDirectory=/opt/layoutparser-api
+ExecStart=/usr/bin/dotnet /opt/layoutparser-api/LayoutParserApi.dll
+Restart=on-failure
+RestartSec=5
+User=layoutparser
+# Segredos (Database__Password, IdentityDatabase__Password...) vêm daqui — chmod 600, dono root.
+# Substitui o registro HKLM\...\Services\LayoutParserApi\Environment do Windows. Nada de DPAPI (#580).
+EnvironmentFile=/etc/layoutparser-api/secrets.env
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://0.0.0.0:5000
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

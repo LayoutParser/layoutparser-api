@@ -29,6 +29,7 @@
          TrustedHeaderAuthenticationHandler existente. -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.7" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.12" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />
     <!-- ADR segregação Decrypt/LowCodeRunner (2026-09-25): resiliência (retry + circuit breaker +
          timeout) do HttpClient do serviço LayoutParserDecrypt — mesmo padrão de degradação

@@ -1,5 +1,11 @@
 # Runbook — Hardening da senha do SQL em repouso no host
 
+> ⚠️ **ATUALIZAÇÃO (2026-09-28, issue #580 / Epic #575):** com Linux como destino do runtime da API,
+> **DPAPI (Opção C e `ProtectedData`) NÃO é o caminho definitivo** — é Windows-only. Não iniciar
+> implementação de DPAPI. Alternativa cross-platform: variável de ambiente via systemd
+> `EnvironmentFile` (`chmod 600`, ver `deploy/linux/`) ou secret do orquestrador (Docker/Kubernetes
+> secrets). O restante deste runbook vale só enquanto o host de produção for Windows.
+
 Item 2 do plano de remediação de 2026-08-15 (`.claude/rules/security.md`, seção
 "2026-08-15 — rotação da senha SQL descartada"). Como a senha do SQL Server (login
 `macgyver`) é uma credencial compartilhada por ~231.890 times na NDD, ela **não pode ser
