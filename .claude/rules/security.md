@@ -323,6 +323,49 @@ não ao Dependabot version updates. Nenhuma ação necessária no `dependabot.ym
 2. `dependabot.yml` — **não mexer**, já é 100% gratuito e correto.
 3. `SecurityCodeScan` + baseline — **não mexer**, é o substituto ativo do CodeQL.
 
+## CodeQL REATIVADO — repos voltaram a público (2026-09-25)
+
+A premissa da remoção acima (repo privado → GHAS pago) **deixou de valer**. Os 3 repos do
+ecossistema (`LayoutParserApi`, `LayoutParserDecrypt`, `layoutparser-portal`) estão **públicos**
+desde a limpeza de histórico de 2026-08-15 (ver seção "🔴🔴 2026-08-15" acima — a decisão de
+manter público foi tomada ali, não revertida). Em repositório **público**, code scanning via
+`github/codeql-action` é **gratuito**, sem exigir GHAS/licença. O `layoutparser-portal` já
+reativou o CodeQL nesse meio-tempo (`javascript-typescript` + `actions`, `build-mode: none`) e
+serviu de template para esta reativação — confirmado sem necessidade de mudança.
+
+**Ações desta sessão:**
+
+1. **`LayoutParserApi`** — recriado `.github/workflows/codeql.yml`. `on:` usa `develop`/`master`
+   (não `main` — branches reais deste repo, confirmado via `git branch -a`). Matriz:
+   `csharp` + `actions`. `build-mode: none` (não `autobuild`) — decisão deliberada: o
+   `LayoutParserApi.csproj` referencia `LayoutParserLib` via `HintPath` relativo a um repo
+   **irmão** (`..\LayoutParserLib\bin\$(Configuration)\LayoutParserLib.dll`) que não existe no
+   checkout isolado do workflow (o CodeQL só clona este repo). Um `autobuild` real quebraria
+   nessa `Reference` ausente. `build-mode: none` para C# é suportado desde CodeQL CLI 2.16 —
+   faz extração/análise direta do código-fonte sem precisar resolver todas as referências,
+   cobrindo o mesmo escopo de `security-extended` (SQLi, path traversal etc.) sem depender de
+   build completo. **Limitação conhecida e não resolvida:** análise fluxo-sensível que dependa
+   de tipos/símbolos definidos em `LayoutParserLib` (não neste repo) pode ficar mais fraca do
+   que um build real conseguiria — se isso incomodar no futuro, a alternativa é um step manual
+   que primeiro reconstrói um stub de `LayoutParserLib.dll` antes do `dotnet build`
+   (`build-mode: manual`), não implementado aqui.
+2. **`LayoutParserDecrypt`** — recriado `.github/workflows/codeql.yml` no repo. `on:` usa só
+   `master` (sem `develop` — fluxo real deste repo é `feat/** → master` direto, confirmado via
+   `git branch -a`). Matriz: `csharp` + `actions`. Diferente da API, este projeto é **standalone**
+   (o próprio `.csproj` documenta em comentário que o código de `LayoutParserLib` foi embutido
+   como arquivos-fonte locais exatamente para não depender de repo irmão) — mas é um projeto
+   **clássico não-SDK** (`TargetFrameworkVersion v4.8.1`, `OutputType Exe`), que exige MSBuild
+   (não `dotnet build`) e por isso o `build.yml` existente já roda em `windows-latest` com
+   `microsoft/setup-msbuild` + `nuget restore`/`msbuild` explícitos, não `dotnet`.
+   `build-mode: none` do CodeQL roda em `ubuntu-latest` e não builda nada — não tem esse
+   problema, mas também não se beneficia da build real já validada no `build.yml`. Optou-se por
+   manter `build-mode: none` + `ubuntu-latest` (mesmo padrão dos outros dois repos, mais simples
+   e sem custo de manter um segundo caminho de build MSBuild dentro do CodeQL) — se no futuro
+   quiser uma análise mais profunda equivalente ao `autobuild`, o caminho seria
+   `build-mode: manual` em `windows-latest` reaproveitando os mesmos steps de
+   `setup-msbuild`/`nuget restore`/`msbuild` do `build.yml`.
+3. **`layoutparser-portal`** — conferido, sem alteração necessária.
+
 ## Regras gerais (todos os agentes)
 
 - **NUNCA** comite segredos, connection strings ou tokens.

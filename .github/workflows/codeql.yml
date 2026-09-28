@@ -1,0 +1,69 @@
+name: CodeQL Security Analysis
+
+on:
+  push:
+    branches:
+      - develop
+      - master
+  pull_request:
+    branches:
+      - develop
+      - master
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+# O workflow apenas le o codigo e publica resultados de code scanning.
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    # PRs, inclusive de forks, executam exclusivamente em runner hospedado pelo GitHub.
+    # Nunca substituir por self-hosted neste workflow de analise de codigo nao confiavel.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language:
+          - csharp
+          - actions
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      # build-mode: none (nao autobuild) - deliberado, nao um descuido. O
+      # LayoutParserApi.csproj referencia LayoutParserLib via HintPath relativo a um repo
+      # IRMAO (..\LayoutParserLib\bin\...) que nao existe no checkout isolado deste workflow
+      # (fetch-depth: 1, so este repo). Um autobuild real quebraria nesse Reference ausente.
+      # CodeQL suporta analise sem build para C# desde a CLI 2.16 (extracao direta do codigo
+      # fonte, sem precisar resolver todas as referencias) - cobre o mesmo escopo de
+      # seguranca que security-extended busca (SQL injection, path traversal, etc.) sem
+      # depender de uma build completa. Se algum dia o CodeQL parar de suportar build-mode:
+      # none para C#, a alternativa e um step de build manual que primeiro reconstroi um
+      # stub de LayoutParserLib.dll antes do dotnet build - nao implementado aqui.
+      - name: Inicializar CodeQL
+        uses: github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+
+      - name: Analisar e publicar resultados
+        uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        with:
+          category: /language:${{ matrix.language }}
