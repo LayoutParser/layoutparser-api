@@ -1,0 +1,78 @@
+name: Deploy API Linux (producao)
+
+# Fase 3 da migracao Linux (issue #578, Epic #575). Pipeline PARALELO ao deploy.yml (Windows).
+# Somente workflow_dispatch e com aprovacao: o deploy.yml Windows continua sendo o de producao
+# ate o cutover (ver docs/architecture/migracao-linux-fase3-pipeline.md). Rollback = nao usar
+# este arquivo e manter o servico Windows.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmar:
+        description: 'Digite DEPLOY-LINUX para confirmar'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-prod-linux
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ inputs.confirmar == 'DEPLOY-LINUX' }}
+    runs-on: [self-hosted, linux, production]
+    timeout-minutes: 30
+    env:
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH_PROD_LINUX || '/opt/layoutparser-api' }}
+      API_URL: ${{ vars.API_URL_PROD_LINUX || 'http://localhost:5000' }}
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        path: layoutparser-api
+    - uses: actions/checkout@v7
+      with:
+        repository: LayoutParser/layoutparser-lib
+        path: layoutparser-lib
+        token: ${{ secrets.GH_PAT_TOKEN || secrets.GITHUB_TOKEN }}
+        fetch-depth: 1
+    - uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Build LayoutParserLib e testes (quality gate)
+      run: |
+        dotnet build layoutparser-lib/LayoutParserLib.csproj --configuration Debug
+        dotnet test layoutparser-api -c Release --verbosity minimal
+
+    - name: Publish
+      run: dotnet publish layoutparser-api/LayoutParserApi.csproj -c Release -o "$RUNNER_TEMP/publish"
+
+    - name: Deploy com backup (systemd)
+      run: |
+        set -euo pipefail
+        test -f /etc/layoutparser-api/secrets.env || { echo "secrets.env ausente"; exit 1; }
+        sudo rm -rf "${DEPLOY_PATH}.prev"; [ -d "$DEPLOY_PATH" ] && sudo cp -a "$DEPLOY_PATH" "${DEPLOY_PATH}.prev" || true
+        sudo mkdir -p "$DEPLOY_PATH"
+        sudo rsync -a --delete "$RUNNER_TEMP/publish/" "$DEPLOY_PATH/"
+        sudo cp layoutparser-api/deploy/linux/layoutparser-api.service /etc/systemd/system/layoutparser-api.service
+        sudo systemctl daemon-reload
+        sudo systemctl enable layoutparser-api
+        sudo systemctl restart layoutparser-api
+
+    - name: Smoke test /health/ready (HTTP 200 estrito) com rollback
+      run: |
+        for i in $(seq 1 12); do
+          code=$(curl -s -o /tmp/ready.json -w '%{http_code}' "$API_URL/health/ready" || true)
+          echo "tentativa $i: HTTP $code"
+          [ "$code" = "200" ] && exit 0
+          sleep 10
+        done
+        cat /tmp/ready.json || true
+        if [ -d "${DEPLOY_PATH}.prev" ]; then
+          sudo rsync -a --delete "${DEPLOY_PATH}.prev/" "$DEPLOY_PATH/"
+          sudo systemctl restart layoutparser-api
+          echo "ROLLBACK aplicado"
+        fi
+        exit 1
