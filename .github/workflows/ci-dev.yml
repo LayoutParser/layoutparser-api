@@ -800,7 +800,8 @@ jobs:
           }
         }
 
-        & $script -ExeSource $exe -BindAddress localhost -Port $porta -InstallDir $decryptDir -LogDir $decryptLogs
+        # Bind duplo: localhost (API dev, mesmo host) + layoutparserdecrypt.local (API Linux de producao); o mesmo servico atende os dois.
+        & $script -ExeSource $exe -BindAddress 'localhost,layoutparserdecrypt.local' -AllowedRemoteAddress '172.25.32.5' -Port $porta -InstallDir $decryptDir -LogDir $decryptLogs
         if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
           Write-Error "install-service.ps1 falhou (exit $LASTEXITCODE)."
           exit 1
