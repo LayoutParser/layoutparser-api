@@ -12,7 +12,7 @@ on:
       - 'feat/**'
   workflow_dispatch:
 
-# Minimo necessario: so faz checkout deste repo e de LayoutParserLib/LayoutParserDecrypt
+# Minimo necessario: so faz checkout deste repo e de LayoutParserDecrypt
 # (via GH_PAT_TOKEN, fora do escopo do GITHUB_TOKEN) - nenhum step comenta PR, cria release
 # ou escreve outro recurso do GitHub. GITHUB_TOKEN nao e usado no self-hosted runner alem
 # do proprio checkout.
@@ -81,19 +81,7 @@ jobs:
 
         Write-Host "Workflows em ASCII puro - seguro para o PowerShell do runner."
 
-    # O LayoutParserApi.csproj referencia a Lib via <Reference> com HintPath relativo
-    # sensivel a configuracao (..\LayoutParserLib\bin\$(Configuration)\, com fallback
-    # condicional para bin\Debug quando a DLL da configuracao nao existe) - o checkout
-    # lado a lado e obrigatorio, no mesmo padrao do deploy.yml.
-    - name: Checkout LayoutParserLib
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        repository: LayoutParser/layoutparser-lib
-        path: layoutparser-lib
-        token: ${{ secrets.GH_PAT_TOKEN || secrets.GITHUB_TOKEN }}
-        fetch-depth: 1
-
-    # O Decrypt e standalone (embute os fontes minimos da Lib) e compila com dotnet build -
+    # O Decrypt e standalone (embute os fontes de criptografia, fonte da verdade) e compila com dotnet build -
     # o runner dev-local NAO possui VS Build Tools/msbuild.exe (nao usar setup-msbuild aqui).
     - name: Checkout LayoutParserDecrypt
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -108,36 +96,6 @@ jobs:
       uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
         dotnet-version: '10.0.x'
-
-    - name: Build LayoutParserLib (Debug, .NET Framework 4.8.1)
-      run: |
-        # Aqui a Lib e compilada em Debug e a API em Release: o HintPath da API e sensivel
-        # a configuracao ($(Configuration)) e, como bin\Release da Lib nao existe neste run,
-        # o fallback condicional do .csproj (!Exists -> bin\Debug) resolve a DLL - nao ha
-        # obrigacao de config casada entre Lib e API.
-        # A Lib e csproj legado (non-SDK) sem PackageReference: o MSBuild do SDK .NET
-        # compila direto - validado no runner dev-local, que NAO possui VS Build Tools/msbuild.exe.
-        $LIB_PROJECT = Join-Path $PWD.Path "layoutparser-lib\LayoutParserLib.csproj"
-
-        if (-not (Test-Path $LIB_PROJECT)) {
-          Write-Error "Projeto nao encontrado: $LIB_PROJECT"
-          exit 1
-        }
-
-        dotnet build "$LIB_PROJECT" --configuration Debug
-
-        if ($LASTEXITCODE -ne 0) {
-          Write-Error "Falha ao compilar LayoutParserLib"
-          exit 1
-        }
-
-        $LIB_DLL = Join-Path $PWD.Path "layoutparser-lib\bin\Debug\LayoutParserLib.dll"
-        if (-not (Test-Path $LIB_DLL)) {
-          Write-Error "LayoutParserLib.dll nao foi gerada em: $LIB_DLL"
-          exit 1
-        }
-
-        Write-Host "LayoutParserLib compilada (Debug): $LIB_DLL"
 
     - name: Build LayoutParserApi (Release)
       run: |
@@ -205,7 +163,7 @@ jobs:
         # ver limitacao documentada em security-code-scan-baseline.json).
         # [ATENCAO] O checkout do repo fica em "LayoutParserApi\" dentro do workspace do
         # runner (`path: LayoutParserApi` no step "Checkout LayoutParserApi"), NAO na raiz
-        # de $PWD - igual todo outro path deste workflow (LIB_PROJECT, API_PROJECT etc.).
+        # de $PWD - igual todo outro path deste workflow (API_PROJECT etc.).
         # O baseline foi comitado na raiz do repo (security-code-scan-baseline.json), entao
         # o caminho correto e "LayoutParserApi\security-code-scan-baseline.json", nao
         # direto em $PWD.Path. Bug real: causava "baseline nao encontrado" sempre (nao so
@@ -494,7 +452,7 @@ jobs:
           Get-ChildItem -Path $SRC -Recurse -File | ForEach-Object {
             [void]$novosRelativos.Add($_.FullName.Substring($SRC.Length + 1))
           }
-          foreach ($extra in @('LayoutParserDecrypt.exe', 'LayoutParserDecrypt.exe.config', 'LayoutParserLib.dll', 'LayoutParserLowCodeRunner.exe.config')) {
+          foreach ($extra in @('LayoutParserDecrypt.exe', 'LayoutParserDecrypt.exe.config','LayoutParserLowCodeRunner.exe.config')) {
             [void]$novosRelativos.Add($extra)
           }
 
@@ -547,19 +505,6 @@ jobs:
             Write-Host "  $f copiado."
           } else {
             Write-Warning "  $f nao encontrado em $DECRYPT_BIN - mantendo o que existir no destino."
-          }
-        }
-
-        # LayoutParserLib.dll ja vem no publish da API (Reference/HintPath);
-        # fallback: copiar da build Debug da Lib se por algum motivo faltar.
-        $libInDest = Join-Path $API_DEST "LayoutParserLib.dll"
-        if (-not (Test-Path $libInDest)) {
-          $libDll = Join-Path $PWD.Path "layoutparser-lib\bin\Debug\LayoutParserLib.dll"
-          if (Test-Path $libDll) {
-            Copy-Item -Path $libDll -Destination $API_DEST -Force
-            Write-Host "  LayoutParserLib.dll copiada (fallback da build Debug)."
-          } else {
-            Write-Warning "  LayoutParserLib.dll ausente no destino e no fallback!"
           }
         }
 
