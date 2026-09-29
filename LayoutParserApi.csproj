@@ -62,16 +62,6 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- HintPath sensível à configuração com fallback determinístico para Debug:
-         produção builda a Lib em Release → casa direto; ci-dev builda Lib Debug + API Release
-         → cai no fallback; dev local (tudo Debug) → casa direto. Assim nem ci-dev.yml nem
-         deploy.yml precisam mudar. -->
-    <Reference Include="LayoutParserLib">
-      <HintPath>..\layoutparser-lib\bin\$(Configuration)\LayoutParserLib.dll</HintPath>
-      <HintPath Condition="!Exists('..\layoutparser-lib\bin\$(Configuration)\LayoutParserLib.dll')">..\layoutparser-lib\bin\Debug\LayoutParserLib.dll</HintPath>
-    </Reference>
-  </ItemGroup>
 
   <ItemGroup>
     <!-- Loop RAG (RepairOrchestrator etc.) extraído de ai/XslSynth para classlib compartilhada

@@ -16,7 +16,7 @@ User=layoutparser
 # Substitui o registro HKLM\...\Services\LayoutParserApi\Environment do Windows. Nada de DPAPI (#580).
 EnvironmentFile=/etc/layoutparser-api/secrets.env
 Environment=ASPNETCORE_ENVIRONMENT=Production
-Environment=ASPNETCORE_URLS=http://0.0.0.0:5000
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5000
 NoNewPrivileges=true
 ProtectSystem=full
 PrivateTmp=true
