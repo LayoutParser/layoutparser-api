@@ -17,6 +17,9 @@ User=layoutparser
 EnvironmentFile=/etc/layoutparser-api/secrets.env
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=ASPNETCORE_URLS=http://127.0.0.1:5000
+# Pastas gravaveis criadas pelo systemd com dono User=layoutparser (dados e logs; a pasta da app fica somente leitura).
+StateDirectory=layoutparser-api
+LogsDirectory=layoutparser-api
 NoNewPrivileges=true
 ProtectSystem=full
 PrivateTmp=true
