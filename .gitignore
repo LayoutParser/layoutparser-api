@@ -380,3 +380,5 @@ secrets.json
 .claude/temp/
 
 .codex
+# Scratch de analises locais (nao versionar)
+.claude/tmp/

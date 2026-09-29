@@ -196,6 +196,8 @@ namespace LayoutParserApi.Services.Fiscal
             sb.AppendLine("evidência suficiente para uma regra, ainda assim devolva o objeto com confidence");
             sb.AppendLine("\"low\" e questions preenchido — NUNCA invente uma regra com confiança alta sem");
             sb.AppendLine("evidência real nos artefatos abaixo.");
+            sb.AppendLine();
+            sb.AppendLine(SysmiddleGenerationRules.PromptSection);
 
             foreach (var artifact in artifacts)
             {
