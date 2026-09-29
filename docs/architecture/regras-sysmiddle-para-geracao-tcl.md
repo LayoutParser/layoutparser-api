@@ -44,7 +44,7 @@ Referência errada não gera erro: o campo sai vazio e a tag some.
 
 Testes: `tests/LayoutParserApi.Tests/Fiscal/SysmiddleChecksTests.cs`.
 
-## Pendente (decisão de produto)
-- Ligar os dois checks ao fluxo do Studio (gate antes de `MappingCompileService`/`MappingTestRunService` e
-  como contexto do disparo de geração), e injetar as seções 1–6 no prompt do gerador.
-- Ponto em aberto com o cliente: o Bloco 098 por item (`nItem`) — a planilha precisa definir.
+## Ligação ao Studio
+- **Prompt de sugestão:** `MappingSuggestionService` injeta `SysmiddleGenerationRules.PromptSection` (seções 1-6).
+- **Preflight:** `POST /api/SysmiddlePreflight` (`SysmiddlePreflightController`) roda os dois checks sobre layout + documento + mapper e devolve `ok`, `parse`, `referenceIssues` e `hint`. Só avisa, não bloqueia.
+- **Não ligado:** o pipeline compile/test-run do Studio trabalha com XML de entrada e a DSL `<MAP><LINE>` própria, sem layout posicional; os checks não se aplicam ali. Ponto em aberto com o cliente: o Bloco 098 por item (`nItem`).
