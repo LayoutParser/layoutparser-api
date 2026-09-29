@@ -24,7 +24,7 @@ on:
       - '.github/workflows/ci-dev.yml'
   workflow_dispatch: # Permite executar manualmente
 
-# Minimo necessario: checkout deste repo + LayoutParserLib/LayoutParserDecrypt (via
+# Minimo necessario: checkout deste repo + LayoutParserDecrypt (via
 # GH_PAT_TOKEN, fora do escopo do GITHUB_TOKEN) - nenhum step comenta PR, cria release ou
 # escreve outro recurso do GitHub. GITHUB_TOKEN so participa do proprio checkout.
 permissions:
@@ -67,14 +67,6 @@ jobs:
       with:
         path: LayoutParserApi
 
-    - name: Checkout LayoutParserLib
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        repository: LayoutParser/layoutparser-lib
-        path: layoutparser-lib
-        token: ${{ secrets.GH_PAT_TOKEN || secrets.GITHUB_TOKEN }}
-        fetch-depth: 1
-
     - name: Checkout LayoutParserDecrypt
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -93,59 +85,15 @@ jobs:
       # actions/unpinned-tag). SHA corresponde a tag v1.3.
       uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57
     
-    - name: Build LayoutParserLib (.NET Framework 4.8.1)
-      run: |
-        $WORK_DIR = $PWD.Path
-        $LIB_DIR = Join-Path $WORK_DIR "layoutparser-lib"
-        $LIB_PROJECT = Join-Path $LIB_DIR "LayoutParserLib.csproj"
-        
-        Write-Host "Compilando LayoutParserLib..."
-        Write-Host "Diretorio: $LIB_DIR"
-        Write-Host "Projeto: $LIB_PROJECT"
-        
-        if (-not (Test-Path $LIB_PROJECT)) {
-          Write-Error "Projeto nao encontrado: $LIB_PROJECT"
-          Write-Host "Conteudo do diretorio de trabalho:"
-          Get-ChildItem -Path $WORK_DIR | Select-Object Name | Format-Table
-          if (Test-Path $LIB_DIR) {
-            Write-Host "Conteudo de LayoutParserLib:"
-            Get-ChildItem -Path $LIB_DIR | Select-Object Name | Format-Table
-          }
-          exit 1
-        }
-        
-        msbuild "$LIB_PROJECT" /p:Configuration=Release /p:Platform=AnyCPU /t:Restore,Build /verbosity:minimal
-        
-        if ($LASTEXITCODE -ne 0) {
-          Write-Error "Falha ao compilar LayoutParserLib"
-          exit 1
-        }
-        
-        Write-Host "LayoutParserLib compilado com sucesso"
-    
     - name: Build LayoutParserDecrypt (.NET Framework 4.8.1)
       run: |
         $WORK_DIR = $PWD.Path
-        $LIB_DIR = Join-Path $WORK_DIR "layoutparser-lib"
-        $LIB_DLL = Join-Path $LIB_DIR "bin\Release\LayoutParserLib.dll"
         $DECRYPT_DIR = Join-Path $WORK_DIR "layoutparser-decrypt"
         $DECRYPT_PROJECT = Join-Path $DECRYPT_DIR "LayoutParserDecrypt.csproj"
         
         Write-Host "Compilando LayoutParserDecrypt..."
         Write-Host "Diretorio: $DECRYPT_DIR"
         Write-Host "Projeto: $DECRYPT_PROJECT"
-        
-        # Copiar DLL da lib para o diretorio do Decrypt
-        if (Test-Path $LIB_DLL) {
-          Copy-Item -Path $LIB_DLL -Destination $DECRYPT_DIR -Force
-          Write-Host "LayoutParserLib.dll copiado para LayoutParserDecrypt"
-        } else {
-          Write-Warning "LayoutParserLib.dll nao encontrado em: $LIB_DLL"
-          Write-Host "Verificando se LayoutParserLib foi compilado..."
-          if (Test-Path $LIB_DIR) {
-            Get-ChildItem -Path $LIB_DIR -Recurse -Filter "*.dll" | Select-Object FullName | Format-Table
-          }
-        }
         
         if (-not (Test-Path $DECRYPT_PROJECT)) {
           Write-Error "Projeto nao encontrado: $DECRYPT_PROJECT"
@@ -216,8 +164,8 @@ jobs:
     # (recurso pago no plano free - ver .claude/rules/agent-authority.md). Ou seja: um push
     # direto em master ia para PRODUCAO sem um unico teste ter rodado, e nada bloqueava.
     #
-    # POSICAO: logo apos o build da API (a suite depende do LayoutParserLib.dll e do assembly da
-    # API, compilados nos steps acima) e ANTES de qualquer step que escreva no host - publicacao
+    # POSICAO: logo apos o build da API (a suite depende do assembly da
+    # API, compilado nos steps acima) e ANTES de qualquer step que escreva no host - publicacao
     # do runner low-code, Environment do servico, Stop-Service/copia de binarios. Falhar aqui
     # custa tempo de build; falhar depois custa producao pela metade: este workflow nao tem swap
     # atomico nem backup dos binarios anteriores.
@@ -333,24 +281,12 @@ jobs:
         # Copiar LayoutParserDecrypt.exe e DLLs
         Write-Host "Copiando LayoutParserDecrypt e dependencias..."
         $DECRYPT_EXE = Join-Path $WORK_DIR "layoutparser-decrypt\bin\Release\LayoutParserDecrypt.exe"
-        $DECRYPT_DLL = Join-Path $WORK_DIR "layoutparser-decrypt\bin\Release\LayoutParserLib.dll"
-        $LIB_DLL = Join-Path $WORK_DIR "layoutparser-lib\bin\Release\LayoutParserLib.dll"
         
         if (Test-Path $DECRYPT_EXE) {
           Copy-Item -Path $DECRYPT_EXE -Destination "deploy/api/" -Force
           Write-Host "  LayoutParserDecrypt.exe copiado de: $DECRYPT_EXE"
         } else {
           Write-Warning "  LayoutParserDecrypt.exe nao encontrado em: $DECRYPT_EXE"
-        }
-        
-        if (Test-Path $DECRYPT_DLL) {
-          Copy-Item -Path $DECRYPT_DLL -Destination "deploy/api/" -Force
-          Write-Host "  LayoutParserLib.dll copiado de: $DECRYPT_DLL"
-        } elseif (Test-Path $LIB_DLL) {
-          Copy-Item -Path $LIB_DLL -Destination "deploy/api/" -Force
-          Write-Host "  LayoutParserLib.dll copiado de: $LIB_DLL"
-        } else {
-          Write-Warning "  LayoutParserLib.dll nao encontrado em nenhum dos locais"
         }
         
         # Verificar estrutura
@@ -1107,10 +1043,10 @@ jobs:
           foreach ($file in $apiFiles) {
             [void]$novosRelativos.Add($file.FullName.Substring($DEPLOY_API_SOURCE.Length + 1))
           }
-          # LayoutParserDecrypt.exe/.config e LayoutParserLib.dll sao copiados por um passo
+          # LayoutParserDecrypt.exe/.config sao copiados por um passo
           # separado logo abaixo (fora de $apiFiles) - registrados aqui tambem para nao virarem
           # "orfaos" na mesma passada em que acabaram de ser publicados.
-          foreach ($extra in @('LayoutParserDecrypt.exe', 'LayoutParserDecrypt.exe.config', 'LayoutParserLib.dll')) {
+          foreach ($extra in @('LayoutParserDecrypt.exe', 'LayoutParserDecrypt.exe.config')) {
             [void]$novosRelativos.Add($extra)
           }
 
@@ -1207,14 +1143,6 @@ jobs:
           Write-Host "LayoutParserDecrypt.exe encontrado em: $decryptExePath"
         } else {
           Write-Warning "LayoutParserDecrypt.exe nao encontrado em: $decryptExePath"
-        }
-        
-        # Verificar se LayoutParserLib.dll foi copiado
-        $libDllPath = Join-Path $DEPLOY_API_PATH "LayoutParserLib.dll"
-        if (Test-Path $libDllPath) {
-          Write-Host "LayoutParserLib.dll encontrado em: $libDllPath"
-        } else {
-          Write-Warning "LayoutParserLib.dll nao encontrado em: $libDllPath"
         }
         
         # Verificar se LayoutParserApi.dll foi copiado (Release)
