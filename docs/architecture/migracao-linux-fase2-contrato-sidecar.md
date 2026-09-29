@@ -1,5 +1,7 @@
 # Fase 2 — Contrato do sidecar Windows (issue #577, Epic #575)
 
+> **Atualização 2026-09-29:** a `LayoutParserLib` foi removida/arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt` (fonte da verdade). Menções à Lib abaixo são contexto histórico.
+
 Serviço fino numa VM Windows mínima que expõe os dois processos legados .NET Framework 4.8.1.
 **Contrato apenas — o serviço e o cliente ainda não foram implementados.**
 

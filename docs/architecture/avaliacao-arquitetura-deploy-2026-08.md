@@ -1,5 +1,7 @@
 # Avaliação da arquitetura de deploy — LayoutParser API (2026-08-11)
 
+> **Atualização 2026-09-29:** a `LayoutParserLib` foi removida/arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt` (fonte da verdade). Menções à Lib abaixo são contexto histórico.
+
 > `@lp-architect` (Aria). Leitura integral de `.github/workflows/deploy.yml` (produção, 978 linhas) e
 > `ci-dev.yml` (dev, 697). Veredito honesto: **o tratamento de configuração e segredo está entre o
 > melhor que já vi num deploy deste porte; a mecânica de entrega e verificação tem lacunas sérias.**

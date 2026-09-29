@@ -11,13 +11,12 @@ Inspirado no harness **AIOX**, porém **enxuto e focado no domínio .NET** desta
 
 API **ASP.NET Core (.NET 10)** que parseia documentos posicionais (TXT / MQSeries / IDOC)
 contra um **layout XML** (low-code Sysmiddle), com camada de IA/ML que aprende a gerar
-transformações (**XSLT/TCL**). É o **hub** de um ecossistema de 4 repositórios:
+transformações (**XSLT/TCL**). É o **hub** de um ecossistema de 3 repositórios:
 
 | Repo | Papel |
 |------|-------|
 | **layoutparser-api** *(este)* | Orquestra parse, cache, IA, transformação. Source of truth do runtime. |
-| **layoutparser-lib** | Criptografia Sysmiddle (DLL referenciada). |
-| **layoutparser-decrypt** | `.exe` de descriptografia (processo externo). |
+| **layoutparser-decrypt** | Criptografia Sysmiddle (serviço Windows; fonte da verdade — a antiga LayoutParserLib foi arquivada em 2026-09-29). |
 | **layoutparser-portal** | Front-end (Vite + React). |
 
 Contexto completo: [`README.md`](../README.md).
