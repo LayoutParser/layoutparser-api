@@ -1,5 +1,7 @@
 # ADR — Reavaliação: fine-tuning de "julgamento fiscal" (CFOP/ST/regras de negócio), não só sintaxe (2026-09-08)
 
+> **Atualização 2026-09-29:** a `LayoutParserLib` foi removida/arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt` (fonte da verdade). Menções à Lib abaixo são contexto histórico.
+
 > **PT-BR.** Autoria: `@lp-architect`. Reavalia parte da Decisão 2 de
 > [`gemini-openai-decommission-decision.md`](../../.claude/agent-memory/lp-architect/gemini-openai-decommission-decision.md)
 > (2026-07-21) e a Reconciliação de 2026-07-21 ("IA fiscal especializada não exige treinar

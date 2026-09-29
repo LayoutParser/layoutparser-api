@@ -1,5 +1,7 @@
 # Fase 2 - Requisitos da VM Windows do sidecar (issue #577)
 
+> **Atualização 2026-09-29:** a `LayoutParserLib` foi removida/arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt` (fonte da verdade). Menções à Lib abaixo são contexto histórico.
+
 Somente requisitos (nada provisionado). Contrato: `migracao-linux-fase2-contrato-sidecar.md`.
 - SO: Windows Server 2019/2022 Core ou com Desktop minimo; .NET Framework 4.8.1 (runtime) e, se o sidecar for .NET 10 fino, ASP.NET Core Hosting.
 - Dimensao inicial: 2 vCPU, 4 GB RAM, 40 GB disco (LowCodeRunner x86 e DLLs Sysmiddle: confirmar consumo).

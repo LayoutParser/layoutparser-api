@@ -1,5 +1,7 @@
 # Viabilidade — decompilar DLLs do Sysmiddle como insumo para RAG
 
+> **Atualização 2026-09-29:** a `LayoutParserLib` foi removida/arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt` (fonte da verdade). Menções à Lib abaixo são contexto histórico.
+
 > **PT-BR** · Análise de viabilidade de uma ideia trazida pelo dono do projeto: entregar as DLLs do
 > Sysmiddle (motor low-code) para o Ollama/loop RAG, para que a IA "entenda a regra de negócio de
 > verdade" ao montar/melhorar mapeamentos TCL/XSL/XSLT.

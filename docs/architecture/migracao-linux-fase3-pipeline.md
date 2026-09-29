@@ -1,5 +1,7 @@
 # Fase 3 - Pipeline Linux (issue #578, Epic #575)
 
+> **Atualização 2026-09-29:** a `LayoutParserLib` foi removida/arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt` (fonte da verdade). Menções à Lib abaixo são contexto histórico.
+
 Adicionados **em paralelo** (sem tocar `deploy.yml`/`ci-dev.yml`): `.github/workflows/ci-dev-linux.yml` e
 `deploy-linux.yml`, ambos `workflow_dispatch` (o de producao exige digitar `DEPLOY-LINUX`).
 Deploy = `dotnet publish` + rsync para `/opt/layoutparser-api` + unit `deploy/linux/layoutparser-api.service`

@@ -1,5 +1,7 @@
 # Arquitetura — Síntese de XSLT assistida por IA
 
+> **Atualização 2026-09-29:** a `LayoutParserLib` foi removida/arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt` (fonte da verdade). Menções à Lib abaixo são contexto histórico.
+
 > **PT-BR** · Como o LayoutParser aprende a **reproduzir a transformação low-code do Sysmiddle como um XSLT gerado**, a partir do trio TXT/input → XML final (NF-e), usando **síntese guiada por verificador** com um LLM local (Llama/Qwen) — eliminando a dependência do runtime low-code.
 >
 > **EN** · How LayoutParser learns to **reproduce the Sysmiddle low-code transformation as a generated XSLT**, from the input→final-NF-e-XML pairs, using **verifier-guided synthesis** with a local LLM — removing the dependency on the low-code runtime.

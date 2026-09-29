@@ -1,5 +1,7 @@
 # Auditoria de gates, bugs e débito técnico — 2026-08-14
 
+> **Atualização 2026-09-29:** a `LayoutParserLib` foi removida/arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt` (fonte da verdade). Menções à Lib abaixo são contexto histórico.
+
 Missão `review-arch` (`@lp-architect`). Escopo: repositório inteiro (código, CI/CD, docs de
 arquitetura, memórias de agente). Objetivo: achar coisas **novas** — o que já virou issue
 (#30–#67, todas fechadas em `gh issue list`) não é repetido aqui, exceto quando a issue foi
