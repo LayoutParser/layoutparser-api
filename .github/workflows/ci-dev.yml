@@ -404,29 +404,29 @@ jobs:
           Write-Host "Servico NSSM removido - sera recriado como nativo."
         }
 
-    # -- Sidecar Decrypt: parar a tarefa agendada ANTES de copiar (fix pos-#569) ---------
+    # -- Sidecar Decrypt (servico Windows): parar ANTES de copiar/reinstalar -----------------
     #
-    # Desde o #569 a API descriptografa via HTTP (LayoutParserDecrypt:BaseUrl), nao mais por
-    # Process.Start. O LayoutParserDecrypt.exe e um exe de CONSOLE (HttpListener em
-    # http://localhost:<porta>/, sem ServiceBase) - nao pode ser registrado com `sc.exe create`
-    # (erro 1053). Por isso roda como TAREFA AGENDADA (ONSTART, conta SYSTEM), nome fixo abaixo.
-    # Aqui so paramos a tarefa e o processo para liberar o .exe antes da copia; o registro e o
-    # start ficam no step "Registrar e iniciar sidecar Decrypt", depois da copia.
-    #
-    # PRE-REQUISITOS DO HOST DEV (NAO verificados pelo CI; confirmados verbalmente pelo dono):
-    #   - o runner pode registrar tarefa agendada como SYSTEM (runner com privilegio de admin);
-    #   - a porta 5220 esta livre (ou escolha outra e alinhe LayoutParserDecrypt__BaseUrl).
-    - name: Parar sidecar Decrypt (tarefa agendada)
+    # Desde o #569 a API descriptografa via HTTP (LayoutParserDecrypt:BaseUrl). O repo
+    # layoutparser-decrypt (develop) agora traz o servico Windows nativo (ServiceBase) e o
+    # scripts/install-service.ps1 (urlacl + firewall + env do servico). Este step para o servico
+    # e remove a TAREFA AGENDADA legada (introduzida no PR #586, substituida por este modelo).
+    - name: Parar sidecar Decrypt (servico Windows e tarefa legada)
       run: |
-        $taskName = "LayoutParserDecrypt-Sidecar"
-        $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-        if ($task) {
-          Write-Host "Tarefa $taskName existente (estado: $($task.State)) - parando..."
-          Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-        } else {
-          Write-Host "Tarefa $taskName ainda nao existe - sera criada adiante."
+        $svcName = "LayoutParserDecrypt"
+        $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -ne 'Stopped') {
+          Write-Host "Parando servico $svcName..."
+          Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
+          try { $svc.WaitForStatus('Stopped', '00:00:30') } catch { Write-Warning "Servico nao parou em 30s." }
         }
-        # Garante que nenhum LayoutParserDecrypt.exe siga segurando o arquivo (best-effort).
+        # Migracao: remove a tarefa agendada legada, se existir.
+        $legacy = "LayoutParserDecrypt-Sidecar"
+        if (Get-ScheduledTask -TaskName $legacy -ErrorAction SilentlyContinue) {
+          Write-Host "Removendo tarefa agendada legada $legacy..."
+          Stop-ScheduledTask -TaskName $legacy -ErrorAction SilentlyContinue
+          Unregister-ScheduledTask -TaskName $legacy -Confirm:$false -ErrorAction SilentlyContinue
+        }
+        # Garante que nenhum LayoutParserDecrypt.exe siga segurando porta/arquivo (best-effort).
         Get-Process -Name "LayoutParserDecrypt" -ErrorAction SilentlyContinue | ForEach-Object {
           Write-Host "Encerrando processo LayoutParserDecrypt PID $($_.Id)..."
           Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
@@ -737,7 +737,7 @@ jobs:
         $envList += "LowCode__RunnerTimeoutSeconds=180"
 
         # LayoutParserDecrypt__BaseUrl - desde o #569 a API descriptografa via HTTP no sidecar
-        # (step "Registrar e iniciar sidecar Decrypt"). O appsettings.json do destino e PRESERVADO,
+        # (step "Instalar e iniciar servico Decrypt"). O appsettings.json do destino e PRESERVADO,
         # entao a chave do repo nao chega ao dev: sem esta env var, BaseUrl fica vazio, o decryptor
         # fica Degraded e o catalogo sobe vazio. Porta 5220 = default do sidecar; manter coerente.
         $envList += "LayoutParserDecrypt__BaseUrl=http://localhost:5220/"
@@ -777,58 +777,37 @@ jobs:
         Write-Host "Ambiente do servico configurado ($($envList.Count) variavel(is) definida(s))."
         Write-Host "  Chaves: $(($envList | ForEach-Object { ($_ -split '=', 2)[0] }) -join ', ')"
 
-    # -- Sidecar Decrypt: registrar a tarefa agendada, iniciar e aguardar /health -------
+    # -- Sidecar Decrypt (servico Windows): instalar via install-service.ps1 e validar /health --
     # Roda depois da copia dos artefatos e ANTES do smoke test da API: sem o sidecar de pe,
     # o catalogo sobe vazio (decryptor Degraded) e o /health/ready da API nunca fica 200.
-    # Idempotente: recria a tarefa a cada deploy. Falha o step (com diagnostico, sem segredos -
-    # o sidecar nao recebe nenhum segredo) se a tarefa nao subir ou o /health nao responder 200.
-    # Pre-requisitos do host dev: ver comentario do step "Parar sidecar Decrypt".
-    - name: Registrar e iniciar sidecar Decrypt
+    # Usa o script do repo layoutparser-decrypt (checkout na develop, exe em bin\Release\net48).
+    # No dev a API roda no MESMO host: bind em localhost:5220 (sem regra de firewall). O runner
+    # precisa de privilegio de administrador (o script exige PowerShell elevado). Nenhum segredo.
+    - name: Instalar e iniciar servico Decrypt (install-service.ps1)
       run: |
-        $taskName = "LayoutParserDecrypt-Sidecar"
         $porta = 5220
         $healthUrl = "http://localhost:$porta/health"
-        $API_DEST = Join-Path $env:DEPLOY_PATH_RESOLVED "api"
-        $exePath = Join-Path $API_DEST "LayoutParserDecrypt.exe"
+        $script = Join-Path $PWD.Path "layoutparser-decrypt\scripts\install-service.ps1"
+        $exe = Join-Path $PWD.Path "layoutparser-decrypt\bin\Release\net48\LayoutParserDecrypt.exe"
+        # Convencao do dono: cada API em pasta propria sob a raiz de deploy (<deploy>/decrypt, ex.: C:/inetpub/wwwroot/layoutparser/decrypt).
+        $decryptDir = Join-Path $env:DEPLOY_PATH_RESOLVED "decrypt"
+        $decryptLogs = Join-Path $decryptDir "logs"
 
-        if (-not (Test-Path $exePath)) {
-          Write-Error "LayoutParserDecrypt.exe nao encontrado em $exePath - o sidecar nao tem o que executar."
+        foreach ($p in @($script, $exe)) {
+          if (-not (Test-Path $p)) {
+            Write-Error "Nao encontrado: $p (o checkout do layoutparser-decrypt precisa estar na develop e o build Release concluido)."
+            exit 1
+          }
+        }
+
+        # Bind duplo: localhost (API dev, mesmo host) + layoutparserdecrypt.local (API Linux de producao); o mesmo servico atende os dois.
+        & $script -ExeSource $exe -BindAddress 'localhost,layoutparserdecrypt.local' -AllowedRemoteAddress '172.25.32.5' -Port $porta -InstallDir $decryptDir -LogDir $decryptLogs
+        if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+          Write-Error "install-service.ps1 falhou (exit $LASTEXITCODE)."
           exit 1
         }
 
-        # Porta precisa estar livre (o step anterior ja parou nossa instancia).
-        $ocupada = Get-NetTCPConnection -LocalPort $porta -State Listen -ErrorAction SilentlyContinue
-        if ($ocupada) {
-          $donos = ($ocupada | ForEach-Object {
-            $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue
-            "PID $($_.OwningProcess) ($(if ($p) { $p.ProcessName } else { 'desconhecido' }))"
-          }) -join ', '
-          Write-Error "Porta $porta ja esta em uso por: $donos. Libere a porta ou ajuste porta/LayoutParserDecrypt__BaseUrl."
-          exit 1
-        }
-
-        # Recria a tarefa (idempotente): ONSTART, SYSTEM, sem limite de tempo, restart em falha.
-        if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
-          Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Stop
-        }
-        try {
-          $action = New-ScheduledTaskAction -Execute $exePath -Argument "$porta" -WorkingDirectory $API_DEST
-          $trigger = New-ScheduledTaskTrigger -AtStartup
-          $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-          $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) `
-            -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
-            -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
-          Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
-            -Principal $principal -Settings $settings `
-            -Description "LayoutParserDecrypt sidecar HTTP (porta $porta) - deploy via CI dev" -ErrorAction Stop | Out-Null
-          Write-Host "Tarefa $taskName registrada (ONSTART, SYSTEM, $exePath $porta)."
-          Start-ScheduledTask -TaskName $taskName -ErrorAction Stop
-        } catch {
-          Write-Error "Falha ao registrar/iniciar a tarefa ${taskName}: $($_.Exception.Message). Verifique se o runner pode criar tarefa agendada como SYSTEM."
-          exit 1
-        }
-
-        # Aguarda /health responder 200 (ate ~60s).
+        # O script so emite aviso se o /health nao responder: aqui falhamos de verdade (ate ~60s).
         $ok = $false
         for ($i = 1; $i -le 30; $i++) {
           try {
@@ -839,21 +818,19 @@ jobs:
         }
 
         if (-not $ok) {
-          Write-Host "--- Diagnostico do sidecar Decrypt ---"
-          $info = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction SilentlyContinue
-          if ($info) { Write-Host "Ultimo resultado da tarefa: $($info.LastTaskResult) (estado: $((Get-ScheduledTask -TaskName $taskName).State))" }
-          $proc = Get-Process -Name "LayoutParserDecrypt" -ErrorAction SilentlyContinue
-          Write-Host ("Processo LayoutParserDecrypt: " + $(if ($proc) { "rodando (PID $($proc.Id))" } else { "NAO esta rodando" }))
-          $logDir = Join-Path $API_DEST "logs"
-          $ultimo = Get-ChildItem -Path $logDir -Filter "*ecrypt*" -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          Write-Host "--- Diagnostico do servico Decrypt ---"
+          $s = Get-Service -Name "LayoutParserDecrypt" -ErrorAction SilentlyContinue
+          Write-Host ("Servico: " + $(if ($s) { $s.Status } else { "NAO instalado" }))
+          $logDir = $decryptLogs
+          $ultimo = Get-ChildItem -Path $logDir -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if ($ultimo) {
             Write-Host "--- Fim de $($ultimo.Name) ---"
             Get-Content -Path $ultimo.FullName -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
           }
-          Write-Error "Sidecar Decrypt nao respondeu HTTP 200 em $healthUrl em ~60s. Deploy de dev abortado antes do smoke test da API."
+          Write-Error "Servico Decrypt nao respondeu HTTP 200 em $healthUrl em ~60s. Deploy de dev abortado antes do smoke test da API."
           exit 1
         }
-        Write-Host "Sidecar Decrypt OK: HTTP 200 em $healthUrl."
+        Write-Host "Servico Decrypt OK: HTTP 200 em $healthUrl."
 
     - name: Iniciar servico e smoke test
       run: |
