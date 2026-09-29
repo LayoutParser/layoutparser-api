@@ -50,7 +50,7 @@ jobs:
 
     steps:
     - name: Checkout LayoutParserApi
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         path: LayoutParserApi
 
@@ -85,29 +85,29 @@ jobs:
         Write-Host "Workflows em ASCII puro - seguro para o PowerShell do runner."
 
     - name: Checkout LayoutParserLib
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        repository: LayoutParser/LayoutParserLib
-        path: LayoutParserLib
+        repository: LayoutParser/layoutparser-lib
+        path: layoutparser-lib
         token: ${{ secrets.GH_PAT_TOKEN || secrets.GITHUB_TOKEN }}
         fetch-depth: 1
 
     - name: Checkout LayoutParserDecrypt
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        repository: LayoutParser/LayoutParserDecrypt
-        path: LayoutParserDecrypt
+        repository: LayoutParser/layoutparser-decrypt
+        path: layoutparser-decrypt
         token: ${{ secrets.GH_PAT_TOKEN || secrets.GITHUB_TOKEN }}
         fetch-depth: 1
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v6
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
         dotnet-version: '10.0.x'
 
     - name: Build LayoutParserLib (Debug, .NET Framework 4.8.1)
       run: |
-        $LIB_PROJECT = Join-Path $PWD.Path "LayoutParserLib\LayoutParserLib.csproj"
+        $LIB_PROJECT = Join-Path $PWD.Path "layoutparser-lib\LayoutParserLib.csproj"
 
         if (-not (Test-Path $LIB_PROJECT)) {
           Write-Error "Projeto nao encontrado: $LIB_PROJECT"
@@ -121,7 +121,7 @@ jobs:
           exit 1
         }
 
-        $LIB_DLL = Join-Path $PWD.Path "LayoutParserLib\bin\Debug\LayoutParserLib.dll"
+        $LIB_DLL = Join-Path $PWD.Path "layoutparser-lib\bin\Debug\LayoutParserLib.dll"
         if (-not (Test-Path $LIB_DLL)) {
           Write-Error "LayoutParserLib.dll nao foi gerada em: $LIB_DLL"
           exit 1
@@ -277,7 +277,7 @@ jobs:
     # ---------------------------------------------------------------------------------------
     - name: Checkout base (develop) para comparar OpenAPI
       continue-on-error: ${{ env.OPENAPI_CONTRACT_BLOCKING != 'true' }}
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: ${{ github.event.pull_request.base.sha }}
         path: LayoutParserApi-base

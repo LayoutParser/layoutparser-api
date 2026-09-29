@@ -33,7 +33,7 @@ jobs:
 
     steps:
     - name: Checkout LayoutParserApi
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         path: LayoutParserApi
 
@@ -86,25 +86,25 @@ jobs:
     # condicional para bin\Debug quando a DLL da configuracao nao existe) - o checkout
     # lado a lado e obrigatorio, no mesmo padrao do deploy.yml.
     - name: Checkout LayoutParserLib
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        repository: LayoutParser/LayoutParserLib
-        path: LayoutParserLib
+        repository: LayoutParser/layoutparser-lib
+        path: layoutparser-lib
         token: ${{ secrets.GH_PAT_TOKEN || secrets.GITHUB_TOKEN }}
         fetch-depth: 1
 
     # O Decrypt e standalone (embute os fontes minimos da Lib) e compila com dotnet build -
     # o runner dev-local NAO possui VS Build Tools/msbuild.exe (nao usar setup-msbuild aqui).
     - name: Checkout LayoutParserDecrypt
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        repository: LayoutParser/LayoutParserDecrypt
-        path: LayoutParserDecrypt
+        repository: LayoutParser/layoutparser-decrypt
+        path: layoutparser-decrypt
         token: ${{ secrets.GH_PAT_TOKEN || secrets.GITHUB_TOKEN }}
         fetch-depth: 1
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v6
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
         dotnet-version: '10.0.x'
 
@@ -116,7 +116,7 @@ jobs:
         # obrigacao de config casada entre Lib e API.
         # A Lib e csproj legado (non-SDK) sem PackageReference: o MSBuild do SDK .NET
         # compila direto - validado no runner dev-local, que NAO possui VS Build Tools/msbuild.exe.
-        $LIB_PROJECT = Join-Path $PWD.Path "LayoutParserLib\LayoutParserLib.csproj"
+        $LIB_PROJECT = Join-Path $PWD.Path "layoutparser-lib\LayoutParserLib.csproj"
 
         if (-not (Test-Path $LIB_PROJECT)) {
           Write-Error "Projeto nao encontrado: $LIB_PROJECT"
@@ -130,7 +130,7 @@ jobs:
           exit 1
         }
 
-        $LIB_DLL = Join-Path $PWD.Path "LayoutParserLib\bin\Debug\LayoutParserLib.dll"
+        $LIB_DLL = Join-Path $PWD.Path "layoutparser-lib\bin\Debug\LayoutParserLib.dll"
         if (-not (Test-Path $LIB_DLL)) {
           Write-Error "LayoutParserLib.dll nao foi gerada em: $LIB_DLL"
           exit 1
@@ -303,7 +303,7 @@ jobs:
     # seguimos com o binario que ja existir no destino.
     - name: Build LayoutParserDecrypt (Release, .NET Framework 4.8.1)
       run: |
-        $DECRYPT_PROJECT = Join-Path $PWD.Path "LayoutParserDecrypt\LayoutParserDecrypt.csproj"
+        $DECRYPT_PROJECT = Join-Path $PWD.Path "layoutparser-decrypt\LayoutParserDecrypt.csproj"
 
         if (-not (Test-Path $DECRYPT_PROJECT)) {
           Write-Warning "Projeto nao encontrado: $DECRYPT_PROJECT - seguindo sem rebuild do Decrypt."
@@ -402,6 +402,35 @@ jobs:
           }
           Write-Host "Servico NSSM removido - sera recriado como nativo."
         }
+
+    # -- Sidecar Decrypt: parar a tarefa agendada ANTES de copiar (fix pos-#569) ---------
+    #
+    # Desde o #569 a API descriptografa via HTTP (LayoutParserDecrypt:BaseUrl), nao mais por
+    # Process.Start. O LayoutParserDecrypt.exe e um exe de CONSOLE (HttpListener em
+    # http://localhost:<porta>/, sem ServiceBase) - nao pode ser registrado com `sc.exe create`
+    # (erro 1053). Por isso roda como TAREFA AGENDADA (ONSTART, conta SYSTEM), nome fixo abaixo.
+    # Aqui so paramos a tarefa e o processo para liberar o .exe antes da copia; o registro e o
+    # start ficam no step "Registrar e iniciar sidecar Decrypt", depois da copia.
+    #
+    # PRE-REQUISITOS DO HOST DEV (NAO verificados pelo CI; confirmados verbalmente pelo dono):
+    #   - o runner pode registrar tarefa agendada como SYSTEM (runner com privilegio de admin);
+    #   - a porta 5220 esta livre (ou escolha outra e alinhe LayoutParserDecrypt__BaseUrl).
+    - name: Parar sidecar Decrypt (tarefa agendada)
+      run: |
+        $taskName = "LayoutParserDecrypt-Sidecar"
+        $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        if ($task) {
+          Write-Host "Tarefa $taskName existente (estado: $($task.State)) - parando..."
+          Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        } else {
+          Write-Host "Tarefa $taskName ainda nao existe - sera criada adiante."
+        }
+        # Garante que nenhum LayoutParserDecrypt.exe siga segurando o arquivo (best-effort).
+        Get-Process -Name "LayoutParserDecrypt" -ErrorAction SilentlyContinue | ForEach-Object {
+          Write-Host "Encerrando processo LayoutParserDecrypt PID $($_.Id)..."
+          Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Seconds 2
 
     - name: Backup do appsettings e copia dos artefatos
       run: |
@@ -505,7 +534,7 @@ jobs:
         }
 
         # LayoutParserDecrypt.exe (+ config) - processo externo de descriptografia.
-        $DECRYPT_BIN = Join-Path $PWD.Path "LayoutParserDecrypt\bin\Release"
+        $DECRYPT_BIN = Join-Path $PWD.Path "layoutparser-decrypt\bin\Release"
         foreach ($f in @('LayoutParserDecrypt.exe', 'LayoutParserDecrypt.exe.config')) {
           $p = Join-Path $DECRYPT_BIN $f
           if (Test-Path $p) {
@@ -520,7 +549,7 @@ jobs:
         # fallback: copiar da build Debug da Lib se por algum motivo faltar.
         $libInDest = Join-Path $API_DEST "LayoutParserLib.dll"
         if (-not (Test-Path $libInDest)) {
-          $libDll = Join-Path $PWD.Path "LayoutParserLib\bin\Debug\LayoutParserLib.dll"
+          $libDll = Join-Path $PWD.Path "layoutparser-lib\bin\Debug\LayoutParserLib.dll"
           if (Test-Path $libDll) {
             Copy-Item -Path $libDll -Destination $API_DEST -Force
             Write-Host "  LayoutParserLib.dll copiada (fallback da build Debug)."
@@ -702,6 +731,12 @@ jobs:
         # em LowCodeCandidatesBudget.cs. Nada a configurar aqui - o default de 90s ja e seguro.
         $envList += "LowCode__RunnerTimeoutSeconds=180"
 
+        # LayoutParserDecrypt__BaseUrl - desde o #569 a API descriptografa via HTTP no sidecar
+        # (step "Registrar e iniciar sidecar Decrypt"). O appsettings.json do destino e PRESERVADO,
+        # entao a chave do repo nao chega ao dev: sem esta env var, BaseUrl fica vazio, o decryptor
+        # fica Degraded e o catalogo sobe vazio. Porta 5220 = default do sidecar; manter coerente.
+        $envList += "LayoutParserDecrypt__BaseUrl=http://localhost:5220/"
+
         # LowCode__RunnerPath - resolvido pelo step de publicacao acima (aponta para
         # <deploy>\api\lowcode-runner\LayoutParserLowCodeRunner.exe, copia da pasta Functions/ do
         # repo). So e definido quando o runner foi realmente publicado; do contrario a chave nao
@@ -736,6 +771,84 @@ jobs:
         Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\$serviceName" -Name "Environment" -Value ([string[]]$envList) -Type MultiString
         Write-Host "Ambiente do servico configurado ($($envList.Count) variavel(is) definida(s))."
         Write-Host "  Chaves: $(($envList | ForEach-Object { ($_ -split '=', 2)[0] }) -join ', ')"
+
+    # -- Sidecar Decrypt: registrar a tarefa agendada, iniciar e aguardar /health -------
+    # Roda depois da copia dos artefatos e ANTES do smoke test da API: sem o sidecar de pe,
+    # o catalogo sobe vazio (decryptor Degraded) e o /health/ready da API nunca fica 200.
+    # Idempotente: recria a tarefa a cada deploy. Falha o step (com diagnostico, sem segredos -
+    # o sidecar nao recebe nenhum segredo) se a tarefa nao subir ou o /health nao responder 200.
+    # Pre-requisitos do host dev: ver comentario do step "Parar sidecar Decrypt".
+    - name: Registrar e iniciar sidecar Decrypt
+      run: |
+        $taskName = "LayoutParserDecrypt-Sidecar"
+        $porta = 5220
+        $healthUrl = "http://localhost:$porta/health"
+        $API_DEST = Join-Path $env:DEPLOY_PATH_RESOLVED "api"
+        $exePath = Join-Path $API_DEST "LayoutParserDecrypt.exe"
+
+        if (-not (Test-Path $exePath)) {
+          Write-Error "LayoutParserDecrypt.exe nao encontrado em $exePath - o sidecar nao tem o que executar."
+          exit 1
+        }
+
+        # Porta precisa estar livre (o step anterior ja parou nossa instancia).
+        $ocupada = Get-NetTCPConnection -LocalPort $porta -State Listen -ErrorAction SilentlyContinue
+        if ($ocupada) {
+          $donos = ($ocupada | ForEach-Object {
+            $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue
+            "PID $($_.OwningProcess) ($(if ($p) { $p.ProcessName } else { 'desconhecido' }))"
+          }) -join ', '
+          Write-Error "Porta $porta ja esta em uso por: $donos. Libere a porta ou ajuste porta/LayoutParserDecrypt__BaseUrl."
+          exit 1
+        }
+
+        # Recria a tarefa (idempotente): ONSTART, SYSTEM, sem limite de tempo, restart em falha.
+        if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+          Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Stop
+        }
+        try {
+          $action = New-ScheduledTaskAction -Execute $exePath -Argument "$porta" -WorkingDirectory $API_DEST
+          $trigger = New-ScheduledTaskTrigger -AtStartup
+          $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+          $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) `
+            -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
+            -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
+          Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
+            -Principal $principal -Settings $settings `
+            -Description "LayoutParserDecrypt sidecar HTTP (porta $porta) - deploy via CI dev" -ErrorAction Stop | Out-Null
+          Write-Host "Tarefa $taskName registrada (ONSTART, SYSTEM, $exePath $porta)."
+          Start-ScheduledTask -TaskName $taskName -ErrorAction Stop
+        } catch {
+          Write-Error "Falha ao registrar/iniciar a tarefa ${taskName}: $($_.Exception.Message). Verifique se o runner pode criar tarefa agendada como SYSTEM."
+          exit 1
+        }
+
+        # Aguarda /health responder 200 (ate ~60s).
+        $ok = $false
+        for ($i = 1; $i -le 30; $i++) {
+          try {
+            $resp = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 3
+            if ([int]$resp.StatusCode -eq 200) { $ok = $true; break }
+          } catch { }
+          Start-Sleep -Seconds 2
+        }
+
+        if (-not $ok) {
+          Write-Host "--- Diagnostico do sidecar Decrypt ---"
+          $info = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction SilentlyContinue
+          if ($info) { Write-Host "Ultimo resultado da tarefa: $($info.LastTaskResult) (estado: $((Get-ScheduledTask -TaskName $taskName).State))" }
+          $proc = Get-Process -Name "LayoutParserDecrypt" -ErrorAction SilentlyContinue
+          Write-Host ("Processo LayoutParserDecrypt: " + $(if ($proc) { "rodando (PID $($proc.Id))" } else { "NAO esta rodando" }))
+          $logDir = Join-Path $API_DEST "logs"
+          $ultimo = Get-ChildItem -Path $logDir -Filter "*ecrypt*" -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($ultimo) {
+            Write-Host "--- Fim de $($ultimo.Name) ---"
+            Get-Content -Path $ultimo.FullName -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+          }
+          Write-Error "Sidecar Decrypt nao respondeu HTTP 200 em $healthUrl em ~60s. Deploy de dev abortado antes do smoke test da API."
+          exit 1
+        }
+        Write-Host "Sidecar Decrypt OK: HTTP 200 em $healthUrl."
 
     - name: Iniciar servico e smoke test
       run: |

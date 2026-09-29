@@ -52,7 +52,12 @@ try
 
     // ✅ Permite rodar como serviço Windows nativo (substitui o NSSM); integra o host ao
     // ciclo de vida do SCM. Fora do SCM (dotnet run / console) é no-op — zero impacto.
-    builder.Host.UseWindowsService();
+    // Migração Linux (issue #578): UseWindowsService só em Windows; em Linux o UseSystemd integra ao
+    // systemd (Type=notify, logs no journal). Ambos são no-op fora do respectivo gerenciador.
+    if (OperatingSystem.IsWindows())
+        builder.Host.UseWindowsService();
+    else if (OperatingSystem.IsLinux())
+        builder.Host.UseSystemd();
 
     // ✅ Hardening da senha do SQL em repouso (ver docs/architecture/runbook-hardening-senha-sql-em-repouso.md).
     // Por padrão, o ASP.NET Core só carrega user-secrets quando IsDevelopment() é true — o que
@@ -468,7 +473,28 @@ try
 
     // Database Services
     builder.Services.AddScoped<ILayoutDatabaseService, LayoutDatabaseService>();
-    builder.Services.AddScoped<IDecryptionService, DecryptionService>();
+
+    // ✅ ADR segregação Decrypt/LowCodeRunner (2026-09-25): HttpClient tipado apontando pro serviço
+    // LayoutParserDecrypt (substitui Process.Start do executável legado local). BaseUrl vazia ⇒
+    // IDecryptionService.IsDecryptorAvailable fica false (mesma semântica do "exe não encontrado"
+    // de antes) — sem BaseAddress, o client nunca tenta conectar. Retry + circuit breaker via Polly
+    // (Microsoft.Extensions.Http.Polly) — descriptografia é etapa crítica do pipeline, não dependência
+    // opcional tipo Redis, então o objetivo do circuito é falhar rápido, não desabilitar o fluxo.
+    var decryptBaseUrl = builder.Configuration["LayoutParserDecrypt:BaseUrl"];
+    var decryptHttpClientBuilder = builder.Services.AddHttpClient<IDecryptionService, DecryptionService>(client =>
+    {
+        if (!string.IsNullOrWhiteSpace(decryptBaseUrl))
+            client.BaseAddress = new Uri(decryptBaseUrl, UriKind.Absolute);
+
+        // Timeout do HttpClient desligado — o timeout defensivo real é o CancellationTokenSource
+        // dedicado dentro de DecryptionService (30s), para distinguir claramente "timeout de
+        // descriptografia" de "timeout genérico de HttpClient" nos logs/exceções.
+        client.Timeout = Timeout.InfiniteTimeSpan;
+    });
+    decryptHttpClientBuilder
+        .AddPolicyHandler(LayoutParserApi.Services.Database.DecryptionResiliencePolicies.GetRetryPolicy())
+        .AddPolicyHandler(LayoutParserApi.Services.Database.DecryptionResiliencePolicies.GetCircuitBreakerPolicy());
+
     builder.Services.AddScoped<MapperDatabaseService>();
     builder.Services.AddScoped<ICachedLayoutService, CachedLayoutService>();
     // ✅ Slice 1 (issue #225/#228): identidade externa → UserId interno + workspace fiscal isolado.
@@ -861,6 +887,8 @@ try
     var identityOpt = app.Services.GetRequiredService<IOptions<TrustedIdentityOptions>>().Value;
     if (identityOpt.TrustIdentityFromLoopbackOnly)
     {
+        if (identityOpt.TrustedProxyNetworks.Length > 0)
+            Log.Information("Identidade do BFF também confiada das redes {Networks} (Security__TrustedProxyNetworks).", string.Join(", ", identityOpt.TrustedProxyNetworks));
         Log.Information("Identidade do BFF ATIVA com guarda de loopback (headers {UserHeader}/{RolesHeader}). " +
             "Headers de identidade só são confiados em conexão loopback (127.0.0.1/::1); origem remota é ignorada.",
             identityOpt.TrustedUserHeader, identityOpt.TrustedRolesHeader);

@@ -53,7 +53,7 @@ distinta:
 
 ```
 Browser  ──(Entra OIDC, sessão cifrada)──►  BFF Fastify  ──(proxy /api + headers de identidade)──►  API .NET
-        session encrypted                    server/ (LayoutParserReact)      trusts x-iis-user/roles
+        session encrypted                    server/ (layoutparser-portal)      trusts x-iis-user/roles
 ```
 
 | Fronteira / Boundary | Mecanismo / Mechanism | Responde por / Answers |
@@ -62,13 +62,13 @@ Browser  ──(Entra OIDC, sessão cifrada)──►  BFF Fastify  ──(proxy
 | BFF ↔ API .NET | **Rede** (a API só aceita o BFF) — sem chave compartilhada nesse salto | *esta chamada vem do BFF confiável* / *this call comes from the trusted BFF* |
 | Dentro da API | Consome `x-iis-user`/`x-iis-roles` injetados pelo BFF para identidade e auditoria | *quem fez o quê* / *who did what* |
 
-**🇧🇷** O BFF Fastify (`LayoutParserReact/server/`) remove qualquer header de identidade vindo do
+**🇧🇷** O BFF Fastify (`layoutparser-portal/server/`) remove qualquer header de identidade vindo do
 próprio browser antes de injetar os headers confiáveis a partir da sessão Entra — anti-*spoofing* na
 camada dele. Na API, o `TrustedIdentityMiddleware` só confia nesses headers se a requisição vier de
 `127.0.0.1` (guarda de loopback), fechando a forja de identidade mesmo enquanto a API ainda escuta em
 todas as interfaces de rede.
 
-**🇺🇸** The Fastify BFF (`LayoutParserReact/server/`) strips any identity header coming from the
+**🇺🇸** The Fastify BFF (`layoutparser-portal/server/`) strips any identity header coming from the
 browser itself before injecting the trusted headers derived from the Entra session — anti-spoofing at
 its own layer. On the API side, `TrustedIdentityMiddleware` only trusts those headers if the request
 comes from `127.0.0.1` (loopback guard), closing the identity-forging gap even while the API still
@@ -84,12 +84,12 @@ the real infrastructure dependencies:
 
 ```mermaid
 flowchart TB
-    subgraph React["📦 LayoutParserReact"]
+    subgraph React["📦 layoutparser-portal"]
         Browser["Browser / SPA"]
         BFF["BFF Fastify (server/)<br/>Entra OIDC · injeta x-iis-user / x-iis-roles<br/>remove headers de identidade vindos do browser"]
     end
 
-    subgraph Api["📦 LayoutParserApi — hub"]
+    subgraph Api["📦 layoutparser-api — hub"]
         MW["TrustedIdentityMiddleware<br/>guarda de loopback (127.0.0.1)"]
         Core["Parse · Cache · Learning/RAG · Transformation"]
     end
@@ -101,7 +101,7 @@ flowchart TB
         DecryptExe["LayoutParserDecrypt.exe<br/>processo externo / external process"]
     end
 
-    subgraph Lib["📦 LayoutParserLib"]
+    subgraph Lib["📦 layoutparser-lib"]
         Crypto["Cripto Sysmiddle canônica<br/>canonical Sysmiddle crypto"]
     end
 
@@ -134,34 +134,34 @@ Browser↔BFF is intentionally not drawn here as confirmed, since it wasn't veri
 
 | Repositório | Papel / Role | Stack |
 |-------------|---------------|-------|
-| **[LayoutParserApi](https://github.com/LayoutParser/LayoutParserApi)** | **Hub** — orquestra parse, cache, IA/ML, transformação e logging. *Source of truth* do runtime. | ASP.NET Core (.NET 10) |
-| **[LayoutParserLib](https://github.com/LayoutParser/LayoutParserLib)** | Biblioteca canônica de **criptografia Sysmiddle** (`CryptographySysMiddle.Decrypt`) e logger em arquivo compartilhados. | .NET Framework 4.8.1 (class library) |
-| **[LayoutParserDecrypt](https://github.com/LayoutParser/LayoutParserDecrypt)** | Console `.exe` que descriptografa layouts/mappers da Sysmiddle — invocado pela API como **processo externo**, porque a API (net10) não roda o `RijndaelManaged` legado em processo de forma compatível. | .NET Framework 4.8.1 (console) |
-| **[LayoutParserReact](https://github.com/LayoutParser/LayoutParserReact)** | **Front-end** (upload, render da estrutura parseada, edição de layouts) + **BFF Fastify** (`server/`) que faz login via Entra OIDC e faz proxy autenticado para a API. | Vite + React + TypeScript · Node/Fastify |
+| **[layoutparser-api](https://github.com/LayoutParser/layoutparser-api)** | **Hub** — orquestra parse, cache, IA/ML, transformação e logging. *Source of truth* do runtime. | ASP.NET Core (.NET 10) |
+| **[layoutparser-lib](https://github.com/LayoutParser/layoutparser-lib)** | Biblioteca canônica de **criptografia Sysmiddle** (`CryptographySysMiddle.Decrypt`) e logger em arquivo compartilhados. | .NET Framework 4.8.1 (class library) |
+| **[layoutparser-decrypt](https://github.com/LayoutParser/layoutparser-decrypt)** | Console `.exe` que descriptografa layouts/mappers da Sysmiddle — invocado pela API como **processo externo**, porque a API (net10) não roda o `RijndaelManaged` legado em processo de forma compatível. | .NET Framework 4.8.1 (console) |
+| **[layoutparser-portal](https://github.com/LayoutParser/layoutparser-portal)** | **Front-end** (upload, render da estrutura parseada, edição de layouts) + **BFF Fastify** (`server/`) que faz login via Entra OIDC e faz proxy autenticado para a API. | Vite + React + TypeScript · Node/Fastify |
 
 ```
-LayoutParserReact (SPA)
+layoutparser-portal (SPA)
         │  Entra OIDC (browser ↔ BFF)
         ▼
-LayoutParserReact/server (BFF Fastify)
+layoutparser-portal/server (BFF Fastify)
         │  proxy /api + x-iis-user/x-iis-roles (rede confiável)
         ▼
-LayoutParserApi (.NET 10) ── Parse ── Cache(Redis) ── Learning/RAG ── Transformation
+layoutparser-api (.NET 10) ── Parse ── Cache(Redis) ── Learning/RAG ── Transformation
         │                       │                                        │
         ▼                       ▼                                        ▼
 LayoutParserDecrypt.exe   SQL Server                              LLM (Ollama local)
    (descriptografia)   (ConnectUS_Macgyver
         │                — source of truth)
         ▼
-LayoutParserLib (cripto canônica — Decrypt copia as fontes; API não a referencia em runtime)
+layoutparser-lib (cripto canônica — Decrypt copia as fontes; API não a referencia em runtime)
 ```
 
-**🇧🇷** Nota de paridade: o `LayoutParserDecrypt` **copia** os `.cs` de cripto/logger do `LayoutParserLib`
+**🇧🇷** Nota de paridade: o `layoutparser-decrypt` **copia** os `.cs` de cripto/logger do `layoutparser-lib`
 em vez de referenciar a DLL, para que seu CI compile de forma autocontida. As cópias já divergiram no
 passado — sincronizar as duas ao alterar a cripto é responsabilidade cross-repo.
 
-**🇺🇸** Parity note: `LayoutParserDecrypt` **copies** the crypto/logger `.cs` files from
-`LayoutParserLib` instead of referencing the DLL, so its CI builds standalone. The copies have
+**🇺🇸** Parity note: `layoutparser-decrypt` **copies** the crypto/logger `.cs` files from
+`layoutparser-lib` instead of referencing the DLL, so its CI builds standalone. The copies have
 diverged before — keeping them in sync when touching the crypto is a cross-repo responsibility.
 
 ---
@@ -195,11 +195,11 @@ CORRECT (realimenta erros no prompt, repete até convergir)
 
 **🇧🇷** Motivo de fundo do Ollama-only: dado fiscal sensível não deve sair para a nuvem sem
 autorização explícita. Detalhe completo (fluxo, serviços, roadmap) no
-[README do `LayoutParserApi`, §5](https://github.com/LayoutParser/LayoutParserApi#5-a-visão-de-ia--the-ai-vision).
+[README do `layoutparser-api`, §5](https://github.com/LayoutParser/layoutparser-api#5-a-visão-de-ia--the-ai-vision).
 
 **🇺🇸** Underlying reason for Ollama-only: sensitive fiscal data must not leave the premises without
 explicit authorization. Full detail (flow, services, roadmap) in the
-[`LayoutParserApi` README, §5](https://github.com/LayoutParser/LayoutParserApi#5-a-visão-de-ia--the-ai-vision).
+[`layoutparser-api` README, §5](https://github.com/LayoutParser/layoutparser-api#5-a-visão-de-ia--the-ai-vision).
 
 ---
 
@@ -246,9 +246,9 @@ explicit authorization. Full detail (flow, services, roadmap) in the
   O mecanismo (`ICurrentUser.IsInRole`) já existe; quais endpoints viram privilegiados é decisão de
   produto documentada, mas não aplicada em código.
 - 🔴 **Segredos comprometidos aguardando rotação/revogação:** a senha do SQL Server e a (já
-  decomissionada) API key do Gemini estiveram em texto plano no histórico do `LayoutParserApi`.
+  decomissionada) API key do Gemini estiveram em texto plano no histórico do `layoutparser-api`.
   Remoção do código/config está feita; **rotação da senha SQL** e **revogação da key do Gemini**
-  seguem como ação do operador. A chave/IV de criptografia do `LayoutParserLib`/`LayoutParserDecrypt`
+  seguem como ação do operador. A chave/IV de criptografia do `layoutparser-lib`/`layoutparser-decrypt`
   também estão **hardcoded no código-fonte** — limitação conhecida, documentada nos READMEs desses
   repos.
 
@@ -268,14 +268,14 @@ explicit authorization. Full detail (flow, services, roadmap) in the
   mechanism (`ICurrentUser.IsInRole`) already exists; which endpoints become privileged is a
   documented product decision, not yet applied in code.
 - 🔴 **Compromised secrets awaiting rotation/revocation:** the SQL Server password and the (now
-  decommissioned) Gemini API key were exposed in plaintext in `LayoutParserApi`'s git history.
+  decommissioned) Gemini API key were exposed in plaintext in `layoutparser-api`'s git history.
   Code/config removal is done; **SQL password rotation** and **Gemini key revocation** remain operator
-  actions. The `LayoutParserLib`/`LayoutParserDecrypt` encryption key/IV are also **hardcoded in
+  actions. The `layoutparser-lib`/`layoutparser-decrypt` encryption key/IV are also **hardcoded in
   source** — a known limitation, documented in those repos' READMEs.
 
 > Detalhe completo por repositório: `.claude/rules/security.md` e
-> `docs/architecture/rollout-p2-autenticacao.md` no `LayoutParserApi`; seção de segurança nos READMEs
-> do `LayoutParserLib` e `LayoutParserDecrypt`.
+> `docs/architecture/rollout-p2-autenticacao.md` no `layoutparser-api`; seção de segurança nos READMEs
+> do `layoutparser-lib` e `layoutparser-decrypt`.
 
 ---
 
@@ -293,24 +293,24 @@ behavior/state.
 ### 2026-08-13
 
 **🇧🇷**
-- ✅ Consumo de identidade do BFF (`TrustedIdentityMiddleware` + guarda de loopback ativa e testada) — `LayoutParserApi` PR [#28](https://github.com/LayoutParser/LayoutParserApi/pull/28)
-- ✅ Auditoria e enforcement por papel (`[Authorize(Roles=...)]`) nos endpoints privilegiados (`LogsController`, `DataGenerationController`, `TransformationExecutionController`) — PR [#43](https://github.com/LayoutParser/LayoutParserApi/pull/43)
+- ✅ Consumo de identidade do BFF (`TrustedIdentityMiddleware` + guarda de loopback ativa e testada) — `layoutparser-api` PR [#28](https://github.com/LayoutParser/layoutparser-api/pull/28)
+- ✅ Auditoria e enforcement por papel (`[Authorize(Roles=...)]`) nos endpoints privilegiados (`LogsController`, `DataGenerationController`, `TransformationExecutionController`) — PR [#43](https://github.com/LayoutParser/layoutparser-api/pull/43)
 - ✅ `ApiKeyGateFilter` removido (mecanismo morto) e API trancada em loopback como higiene de segurança
-- ✅ HTTPS habilitado no Kestrel com certificado autoassinado — PR [#54](https://github.com/LayoutParser/LayoutParserApi/pull/54)
-- ✅ Pathway de geração via IA (Ollama) em `execute-candidates` — Issue #40, PRs [#52](https://github.com/LayoutParser/LayoutParserApi/pull/52)/[#57](https://github.com/LayoutParser/LayoutParserApi/pull/57)
-- ✅ Persistência de candidatos do Job 1 (XSLT + prompt + validação) com retenção de 30 dias — PRs [#50](https://github.com/LayoutParser/LayoutParserApi/pull/50)/[#58](https://github.com/LayoutParser/LayoutParserApi/pull/58)
-- ✅ Refactor: `ai/XslSynth.Core` extraído como classlib compartilhada, elimina diff ad-hoc do pathway IA — PR [#61](https://github.com/LayoutParser/LayoutParserApi/pull/61)
-- ✅ Fix: agregação de ocorrências posicionais de `LineElement` em `ValidateLineOccurrences` — PR [#49](https://github.com/LayoutParser/LayoutParserApi/pull/49)
+- ✅ HTTPS habilitado no Kestrel com certificado autoassinado — PR [#54](https://github.com/LayoutParser/layoutparser-api/pull/54)
+- ✅ Pathway de geração via IA (Ollama) em `execute-candidates` — Issue #40, PRs [#52](https://github.com/LayoutParser/layoutparser-api/pull/52)/[#57](https://github.com/LayoutParser/layoutparser-api/pull/57)
+- ✅ Persistência de candidatos do Job 1 (XSLT + prompt + validação) com retenção de 30 dias — PRs [#50](https://github.com/LayoutParser/layoutparser-api/pull/50)/[#58](https://github.com/LayoutParser/layoutparser-api/pull/58)
+- ✅ Refactor: `ai/XslSynth.Core` extraído como classlib compartilhada, elimina diff ad-hoc do pathway IA — PR [#61](https://github.com/LayoutParser/layoutparser-api/pull/61)
+- ✅ Fix: agregação de ocorrências posicionais de `LineElement` em `ValidateLineOccurrences` — PR [#49](https://github.com/LayoutParser/layoutparser-api/pull/49)
 
 **🇺🇸**
-- ✅ BFF identity consumption (`TrustedIdentityMiddleware` + active, tested loopback guard) — `LayoutParserApi` PR [#28](https://github.com/LayoutParser/LayoutParserApi/pull/28)
-- ✅ Audit trail and role enforcement (`[Authorize(Roles=...)]`) on privileged endpoints (`LogsController`, `DataGenerationController`, `TransformationExecutionController`) — PR [#43](https://github.com/LayoutParser/LayoutParserApi/pull/43)
+- ✅ BFF identity consumption (`TrustedIdentityMiddleware` + active, tested loopback guard) — `layoutparser-api` PR [#28](https://github.com/LayoutParser/layoutparser-api/pull/28)
+- ✅ Audit trail and role enforcement (`[Authorize(Roles=...)]`) on privileged endpoints (`LogsController`, `DataGenerationController`, `TransformationExecutionController`) — PR [#43](https://github.com/LayoutParser/layoutparser-api/pull/43)
 - ✅ Dead `ApiKeyGateFilter` removed and API locked down to loopback as security hygiene
-- ✅ HTTPS enabled on Kestrel with a self-signed certificate — PR [#54](https://github.com/LayoutParser/LayoutParserApi/pull/54)
-- ✅ AI generation pathway (Ollama) in `execute-candidates` — Issue #40, PRs [#52](https://github.com/LayoutParser/LayoutParserApi/pull/52)/[#57](https://github.com/LayoutParser/LayoutParserApi/pull/57)
-- ✅ Job 1 candidate persistence (XSLT + prompt + validation) with 30-day retention — PRs [#50](https://github.com/LayoutParser/LayoutParserApi/pull/50)/[#58](https://github.com/LayoutParser/LayoutParserApi/pull/58)
-- ✅ Refactor: `ai/XslSynth.Core` extracted as a shared classlib, removing the ad-hoc diff from the AI pathway — PR [#61](https://github.com/LayoutParser/LayoutParserApi/pull/61)
-- ✅ Fix: positional `LineElement` occurrence aggregation in `ValidateLineOccurrences` — PR [#49](https://github.com/LayoutParser/LayoutParserApi/pull/49)
+- ✅ HTTPS enabled on Kestrel with a self-signed certificate — PR [#54](https://github.com/LayoutParser/layoutparser-api/pull/54)
+- ✅ AI generation pathway (Ollama) in `execute-candidates` — Issue #40, PRs [#52](https://github.com/LayoutParser/layoutparser-api/pull/52)/[#57](https://github.com/LayoutParser/layoutparser-api/pull/57)
+- ✅ Job 1 candidate persistence (XSLT + prompt + validation) with 30-day retention — PRs [#50](https://github.com/LayoutParser/layoutparser-api/pull/50)/[#58](https://github.com/LayoutParser/layoutparser-api/pull/58)
+- ✅ Refactor: `ai/XslSynth.Core` extracted as a shared classlib, removing the ad-hoc diff from the AI pathway — PR [#61](https://github.com/LayoutParser/layoutparser-api/pull/61)
+- ✅ Fix: positional `LineElement` occurrence aggregation in `ValidateLineOccurrences` — PR [#49](https://github.com/LayoutParser/layoutparser-api/pull/49)
 
 ---
 

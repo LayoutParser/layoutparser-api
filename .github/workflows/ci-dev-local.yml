@@ -12,6 +12,12 @@ name: CI Dev Local - Runner Smoke Test
 on:
   workflow_dispatch:
 
+# Disparo e sempre manual, mas mantido por paridade/consistencia com os demais workflows
+# do repo - evita duas execucoes simultaneas empilhadas se alguem disparar 2x sem querer.
+concurrency:
+  group: ci-dev-local-smoketest
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -24,7 +30,7 @@ jobs:
 
     steps:
     - name: Checkout LayoutParserApi
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Confirmar roteamento e ambiente do runner
       run: |

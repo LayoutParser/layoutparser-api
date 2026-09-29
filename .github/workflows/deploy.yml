@@ -63,28 +63,28 @@ jobs:
 
     steps:
     - name: Checkout LayoutParserApi
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         path: LayoutParserApi
 
     - name: Checkout LayoutParserLib
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        repository: LayoutParser/LayoutParserLib
-        path: LayoutParserLib
+        repository: LayoutParser/layoutparser-lib
+        path: layoutparser-lib
         token: ${{ secrets.GH_PAT_TOKEN || secrets.GITHUB_TOKEN }}
         fetch-depth: 1
 
     - name: Checkout LayoutParserDecrypt
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        repository: LayoutParser/LayoutParserDecrypt
-        path: LayoutParserDecrypt
+        repository: LayoutParser/layoutparser-decrypt
+        path: layoutparser-decrypt
         token: ${{ secrets.GH_PAT_TOKEN || secrets.GITHUB_TOKEN }}
         fetch-depth: 1
     
     - name: Setup .NET
-      uses: actions/setup-dotnet@v6
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
         dotnet-version: '10.0.x'
     
@@ -96,7 +96,7 @@ jobs:
     - name: Build LayoutParserLib (.NET Framework 4.8.1)
       run: |
         $WORK_DIR = $PWD.Path
-        $LIB_DIR = Join-Path $WORK_DIR "LayoutParserLib"
+        $LIB_DIR = Join-Path $WORK_DIR "layoutparser-lib"
         $LIB_PROJECT = Join-Path $LIB_DIR "LayoutParserLib.csproj"
         
         Write-Host "Compilando LayoutParserLib..."
@@ -126,9 +126,9 @@ jobs:
     - name: Build LayoutParserDecrypt (.NET Framework 4.8.1)
       run: |
         $WORK_DIR = $PWD.Path
-        $LIB_DIR = Join-Path $WORK_DIR "LayoutParserLib"
+        $LIB_DIR = Join-Path $WORK_DIR "layoutparser-lib"
         $LIB_DLL = Join-Path $LIB_DIR "bin\Release\LayoutParserLib.dll"
-        $DECRYPT_DIR = Join-Path $WORK_DIR "LayoutParserDecrypt"
+        $DECRYPT_DIR = Join-Path $WORK_DIR "layoutparser-decrypt"
         $DECRYPT_PROJECT = Join-Path $DECRYPT_DIR "LayoutParserDecrypt.csproj"
         
         Write-Host "Compilando LayoutParserDecrypt..."
@@ -332,9 +332,9 @@ jobs:
         
         # Copiar LayoutParserDecrypt.exe e DLLs
         Write-Host "Copiando LayoutParserDecrypt e dependencias..."
-        $DECRYPT_EXE = Join-Path $WORK_DIR "LayoutParserDecrypt\bin\Release\LayoutParserDecrypt.exe"
-        $DECRYPT_DLL = Join-Path $WORK_DIR "LayoutParserDecrypt\bin\Release\LayoutParserLib.dll"
-        $LIB_DLL = Join-Path $WORK_DIR "LayoutParserLib\bin\Release\LayoutParserLib.dll"
+        $DECRYPT_EXE = Join-Path $WORK_DIR "layoutparser-decrypt\bin\Release\LayoutParserDecrypt.exe"
+        $DECRYPT_DLL = Join-Path $WORK_DIR "layoutparser-decrypt\bin\Release\LayoutParserLib.dll"
+        $LIB_DLL = Join-Path $WORK_DIR "layoutparser-lib\bin\Release\LayoutParserLib.dll"
         
         if (Test-Path $DECRYPT_EXE) {
           Copy-Item -Path $DECRYPT_EXE -Destination "deploy/api/" -Force

@@ -15,10 +15,10 @@ transformações (**XSLT/TCL**). É o **hub** de um ecossistema de 4 repositóri
 
 | Repo | Papel |
 |------|-------|
-| **LayoutParserApi** *(este)* | Orquestra parse, cache, IA, transformação. Source of truth do runtime. |
-| **LayoutParserLib** | Criptografia Sysmiddle (DLL referenciada). |
-| **LayoutParserDecrypt** | `.exe` de descriptografia (processo externo). |
-| **LayoutParserReact** | Front-end (Vite + React). |
+| **layoutparser-api** *(este)* | Orquestra parse, cache, IA, transformação. Source of truth do runtime. |
+| **layoutparser-lib** | Criptografia Sysmiddle (DLL referenciada). |
+| **layoutparser-decrypt** | `.exe` de descriptografia (processo externo). |
+| **layoutparser-portal** | Front-end (Vite + React). |
 
 Contexto completo: [`README.md`](../README.md).
 

@@ -36,6 +36,14 @@ namespace LayoutParserApi.Services.Security
         public bool TrustIdentityFromLoopbackOnly { get; set; } = true;
 
         /// <summary>
+        /// Fase 4 da migração Linux (issue #579): redes CIDR (env <c>Security__TrustedProxyNetworks__0=10.20.0.0/24</c>)
+        /// de onde os headers de identidade também são confiados, além do loopback. Serve à topologia
+        /// multi-host (BFF e API em containers/hosts distintos) sem desligar a guarda. Default vazio =
+        /// comportamento atual (somente loopback). A rede precisa ser isolada — CIDR largo reabre a forja.
+        /// </summary>
+        public string[] TrustedProxyNetworks { get; set; } = Array.Empty<string>();
+
+        /// <summary>
         /// Header com o provedor de identidade (<c>entra</c>/<c>google</c>/<c>development</c>) — Slice 1
         /// (issue #225). Default conforme o contrato cross-repo
         /// <c>fiscal-workspace-and-mapping-explanation-api.md</c> §1.

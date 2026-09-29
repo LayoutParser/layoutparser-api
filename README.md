@@ -37,7 +37,7 @@
 
 ## 1. Visão geral / Overview
 
-**🇧🇷** O LayoutParser API é o back-end de uma plataforma de **leitura, validação e transformação de documentos de integração** (notas fiscais eletrônicas e mensagens corporativas). O usuário, pelo front-end ([LayoutParserReact](#2-ecossistema-de-projetos--project-ecosystem)), anexa **dois arquivos**:
+**🇧🇷** O LayoutParser API é o back-end de uma plataforma de **leitura, validação e transformação de documentos de integração** (notas fiscais eletrônicas e mensagens corporativas). O usuário, pelo front-end ([layoutparser-portal](#2-ecossistema-de-projetos--project-ecosystem)), anexa **dois arquivos**:
 
 - um **layout XML** — a "planta" que descreve as linhas, campos, posições e tamanhos do documento (modelado no low-code **Sysmiddle**);
 - um **documento** posicional (`.txt`, `.mq_series`, `.idoc`) — o dado bruto a ser interpretado.
@@ -56,20 +56,20 @@ A API casa os dois, devolve a **estrutura parseada** (linhas → campos → valo
 
 | Repositório | Tipo | Papel / Role |
 |-------------|------|--------------|
-| **LayoutParserApi** *(este)* | ASP.NET Core 10 Web API | Orquestra parse, cache, IA/ML, transformação e logging. **Source of truth do runtime.** |
-| **LayoutParserLib** | .NET Class Library (DLL) | Criptografia Sysmiddle (`CryptographySysMiddle`) e utilitários compartilhados. Referenciada pela API via `HintPath`. |
-| **LayoutParserDecrypt** | .NET Console (`.exe`) | Descriptografa os layouts/pacotes Sysmiddle. Invocado pela API como processo externo. |
-| **LayoutParserReact** | Vite + React + TypeScript | Front-end: upload de arquivos, render da estrutura parseada, edição de layouts. |
+| **layoutparser-api** *(este)* | ASP.NET Core 10 Web API | Orquestra parse, cache, IA/ML, transformação e logging. **Source of truth do runtime.** |
+| **layoutparser-lib** | .NET Class Library (DLL) | Criptografia Sysmiddle (`CryptographySysMiddle`) e utilitários compartilhados. Referenciada pela API via `HintPath`. |
+| **layoutparser-decrypt** | .NET Console (`.exe`) | Descriptografa os layouts/pacotes Sysmiddle. Invocado pela API como processo externo. |
+| **layoutparser-portal** | Vite + React + TypeScript | Front-end: upload de arquivos, render da estrutura parseada, edição de layouts. |
 
 ```
                          ┌───────────────────────────┐
-                         │     LayoutParserReact      │  (front-end / Vite + React)
+                         │     layoutparser-portal    │  (front-end / Vite + React)
                          │  upload .xml + documento   │
                          └─────────────┬──────────────┘
                                        │  HTTP (CORS)
                                        ▼
         ┌──────────────────────────────────────────────────────────┐
-        │                    LayoutParserApi (.NET 10)               │
+        │                    layoutparser-api (.NET 10)              │
         │                                                            │
         │  Parse ── Cache(Redis) ── Learning/RAG ── Transformation   │
         │     │           │              │                │          │
@@ -77,7 +77,7 @@ A API casa os dois, devolve a **estrutura parseada** (linhas → campos → valo
               │           │              │                │
    ┌──────────┘   ┌───────┘        ┌─────┘          ┌─────┘
    ▼              ▼                ▼                ▼
-LayoutParserLib  Redis        SQL Server        LLM (Ollama /
+layoutparser-lib Redis        SQL Server        LLM (Ollama /
 (crypto .dll)   (layouts/   (ConnectUS_Macgyver  Gemini / OpenAI)
                  mappers)     — source of truth)
    │
@@ -362,23 +362,23 @@ per request to avoid repeating large allocations for every catalog entry.
 
 ### Contrato de referência: `transformationsTicket` para polling do front (Issue #99) / Reference contract: `transformationsTicket` for front-end polling (Issue #99)
 
-**🇧🇷** Resposta formal a uma proposta cross-team do `LayoutParserReact` pedindo um endpoint novo de job assíncrono + polling para resolver a barra de progresso travando em "100%". Decisão da arquitetura ([`docs/architecture/resposta-proposta-frontend-progresso-parse-2026-08-14.md`](docs/architecture/resposta-proposta-frontend-progresso-parse-2026-08-14.md)): **nenhum endpoint novo** — o mecanismo já existente, `GET /api/parse/transformations/{ticket}`, é o contrato oficial que o front deve consumir. Nenhuma mudança de contrato foi feita para atender esta issue; esta seção só torna explícito, num único lugar, o que já era verdade no código.
+**🇧🇷** Resposta formal a uma proposta cross-team do `layoutparser-portal` pedindo um endpoint novo de job assíncrono + polling para resolver a barra de progresso travando em "100%". Decisão da arquitetura ([`docs/architecture/resposta-proposta-frontend-progresso-parse-2026-08-14.md`](docs/architecture/resposta-proposta-frontend-progresso-parse-2026-08-14.md)): **nenhum endpoint novo** — o mecanismo já existente, `GET /api/parse/transformations/{ticket}`, é o contrato oficial que o front deve consumir. Nenhuma mudança de contrato foi feita para atender esta issue; esta seção só torna explícito, num único lugar, o que já era verdade no código.
 
 - **Gargalo real:** é a **transformação** (pathway low-code/IA), não o parse do documento em si. O parse tem instrumentação de duração (`Stopwatch` em `ParseController.Upload`, log estruturado `Parse concluído em {ParseDurationMs}ms`), mas não emite ticket próprio — hoje não há evidência de que precise, porque o `transformationsTicket` já cobre a parte demorada do fluxo.
 - **Como consumir:** o `POST /api/parse/upload` sempre devolve `transformationsStatus` + `transformationsTicket` (ticket só vem nulo quando o pathway não é elegível, `transformationsStatus="not_applicable"`). Quando `transformationsStatus="processing"`, faça polling em `GET /api/parse/transformations/{ticket}` até `status` virar `"completed"` ou `"failed"` — ver tabela de fases logo acima para o vocabulário completo.
 - **Intervalo de polling:** não há um número de referência fixo recomendado por esta issue — falta medição de duração real em produção por tempo suficiente para propor um intervalo com dado, não achismo. Até lá, sugerimos um polling com backoff (ex.: 2s → 5s → 10s) em vez de um intervalo fixo curto.
-- **SSE/WebSocket foi descartado com evidência de código:** o proxy Fastify do BFF (`LayoutParserReact/server/dist/src/app.js`) está registrado com `websocket: false` explícito — decisão deliberada do próprio front, não omissão da API.
+- **SSE/WebSocket foi descartado com evidência de código:** o proxy Fastify do BFF (`layoutparser-portal/server/dist/src/app.js`) está registrado com `websocket: false` explícito — decisão deliberada do próprio front, não omissão da API.
 - **Ação de custo zero recomendada ao front (fora deste repo):** trocar o rótulo da barra de progresso para algo como "Processando arquivo" com indicador indeterminado assim que o upload terminar, em vez de tentar prever 100% antes da hora.
 
-**🇺🇸** Formal response to a cross-team proposal from `LayoutParserReact` asking for a new async job + polling endpoint to fix the progress bar getting stuck at "100%". Architecture decision: **no new endpoint** — the existing `GET /api/parse/transformations/{ticket}` mechanism is the official contract the front should consume. No contract change was made for this issue; this section just makes explicit, in one place, what was already true in the code.
+**🇺🇸** Formal response to a cross-team proposal from `layoutparser-portal` asking for a new async job + polling endpoint to fix the progress bar getting stuck at "100%". Architecture decision: **no new endpoint** — the existing `GET /api/parse/transformations/{ticket}` mechanism is the official contract the front should consume. No contract change was made for this issue; this section just makes explicit, in one place, what was already true in the code.
 
 - **The real bottleneck** is the **transformation** (low-code/AI pathway), not the document parse itself. Parse now has duration instrumentation (`Stopwatch` in `ParseController.Upload`, structured log `Parse concluído em {ParseDurationMs}ms`), but does not emit its own ticket — there's currently no evidence it needs one, since `transformationsTicket` already covers the slow part of the flow.
 - **How to consume it:** `POST /api/parse/upload` always returns `transformationsStatus` + `transformationsTicket` (ticket is only null when the pathway isn't eligible, `transformationsStatus="not_applicable"`). When `transformationsStatus="processing"`, poll `GET /api/parse/transformations/{ticket}` until `status` becomes `"completed"` or `"failed"` — see the phase table above for the full vocabulary.
 - **Polling interval:** this issue doesn't recommend a fixed number — real production duration measurement is still missing to propose an interval backed by data instead of guesswork. Until then, we suggest polling with backoff (e.g. 2s → 5s → 10s) instead of a short fixed interval.
-- **SSE/WebSocket was ruled out with code evidence:** the BFF's Fastify proxy (`LayoutParserReact/server/dist/src/app.js`) is registered with an explicit `websocket: false` — a deliberate decision from the front itself, not an oversight from the API.
+- **SSE/WebSocket was ruled out with code evidence:** the BFF's Fastify proxy (`layoutparser-portal/server/dist/src/app.js`) is registered with an explicit `websocket: false` — a deliberate decision from the front itself, not an oversight from the API.
 - **Zero-cost action recommended for the front (outside this repo):** switch the progress bar label to something like "Processing file" with an indeterminate indicator as soon as the upload finishes, instead of trying to predict 100% too early.
 
-### Diagnóstico estruturado de `execute-candidates` (Issue LayoutParserReact #86) / Structured diagnostics for `execute-candidates`
+### Diagnóstico estruturado de `execute-candidates` (Issue layoutparser-portal#86) / Structured diagnostics for `execute-candidates`
 
 **🇧🇷** `POST /api/transformationexecution/execute-candidates` ganhou dois campos **aditivos** na resposta (não quebram clientes existentes que ignoram campos desconhecidos): [`pathwayDiagnostics`](Models/Transformation/PathwayDiagnostic.cs) e `correlationId`. Design completo: [`docs/architecture/diagnostico-issue-86-diagnostico-estruturado-execute-candidates.md`](docs/architecture/diagnostico-issue-86-diagnostico-estruturado-execute-candidates.md).
 
@@ -430,8 +430,7 @@ per request to avoid repeating large allocations for every catalog entry.
 
 **🇧🇷** `POST /api/transformationexecution/execute-candidates` ganha um terceiro campo **aditivo** por candidato (issue #141, não quebra clientes existentes): [`fieldMappings`](Models/Transformation/TransformationCandidate.cs), o mapeamento **campo-a-campo** entre o layout posicional de origem (TXT/MQSeries/IDOC) e o XML de destino (hoje só NF-e — escopo do motor de resolução estrutural, issue #140). Reaproveita, sem custo adicional de I/O, o mesmo mapper decifrado e o mesmo parse posicional já usados para gerar `transformedXml` no pathway `sysmiddle`.
 
-**Não confunda com `sectionMappings`/`segmentMappings` (issue #138, ver seção "Rastreabilidade TXT↔XML por linha/seção" abaixo):** aquele é um mapeamento em nível de **linha/seção** (qual seção do layout corresponde a qual bloco do XML), já existente antes da #141. `fieldMappings` é um nível de granularidade abaixo — **campo individual** dentro de uma linha, com coordenada estrutural precisa (posição, ocorrência, XPath). Os dois são **complementares**, não substitutos: um front pode usar `sectionMappings` para navegação em bloco e `fieldMappings` para destacar/editar um campo específico. Juntos, os dois campos desbloqueiam a PBI [LayoutParserReact #128](https://github.com/LayoutParser/LayoutParserReact/issues/128) (highlight de campo).
-**Não confunda com `sectionMappings`/`segmentMappings` (issue #138, em documentação — pendência conhecida):** aquele é um mapeamento em nível de **linha/seção** (qual seção do layout corresponde a qual bloco do XML), já existente antes da #141. `fieldMappings` é um nível de granularidade abaixo — **campo individual** dentro de uma linha, com coordenada estrutural precisa (posição, ocorrência, XPath). Os dois são **complementares**, não substitutos: um front pode usar `sectionMappings` para navegação em bloco e `fieldMappings` para destacar/editar um campo específico.
+**Não confunda com `sectionMappings`/`segmentMappings` (issue #138, ver seção "Rastreabilidade TXT↔XML por linha/seção" abaixo):** aquele é um mapeamento em nível de **linha/seção** (qual seção do layout corresponde a qual bloco do XML), já existente antes da #141. `fieldMappings` é um nível de granularidade abaixo — **campo individual** dentro de uma linha, com coordenada estrutural precisa (posição, ocorrência, XPath). Os dois são **complementares**, não substitutos: um front pode usar `sectionMappings` para navegação em bloco e `fieldMappings` para destacar/editar um campo específico. Juntos, os dois campos desbloqueiam a PBI [layoutparser-portal#128](https://github.com/LayoutParser/layoutparser-portal/issues/128) (highlight de campo).
 
 Exemplo completo — resolução do CNPJ do emitente:
 
@@ -492,8 +491,7 @@ Exemplo completo — resolução do CNPJ do emitente:
 
 **🇺🇸** `POST /api/transformationexecution/execute-candidates` gains a third **additive** per-candidate field (issue #141, does not break existing clients): [`fieldMappings`](Models/Transformation/TransformationCandidate.cs), the **field-to-field** mapping between the source positional layout (TXT/MQSeries/IDOC) and the destination XML (NF-e only today — scope of the structural resolution engine, issue #140). It reuses, at no extra I/O cost, the same decrypted mapper and positional parse already used to produce `transformedXml` on the `sysmiddle` pathway.
 
-**Do not confuse with `sectionMappings`/`segmentMappings` (issue #138, see the "Row/section TXT↔XML traceability" section below):** that one is a **line/section**-level mapping (which layout section corresponds to which XML block), predating #141. `fieldMappings` is one granularity level below — an **individual field** inside a line, with a precise structural coordinate (position, occurrence, XPath). The two are **complementary**, not substitutes: a front-end can use `sectionMappings` for block-level navigation and `fieldMappings` to highlight/edit one specific field. Together, the two fields unblock PBI [LayoutParserReact #128](https://github.com/LayoutParser/LayoutParserReact/issues/128) (field highlight).
-**Do not confuse with `sectionMappings`/`segmentMappings` (issue #138, docs pending — known gap):** that one is a **line/section**-level mapping (which layout section corresponds to which XML block), predating #141. `fieldMappings` is one granularity level below — an **individual field** inside a line, with a precise structural coordinate (position, occurrence, XPath). The two are **complementary**, not substitutes: a front-end can use `sectionMappings` for block-level navigation and `fieldMappings` to highlight/edit one specific field.
+**Do not confuse with `sectionMappings`/`segmentMappings` (issue #138, see the "Row/section TXT↔XML traceability" section below):** that one is a **line/section**-level mapping (which layout section corresponds to which XML block), predating #141. `fieldMappings` is one granularity level below — an **individual field** inside a line, with a precise structural coordinate (position, occurrence, XPath). The two are **complementary**, not substitutes: a front-end can use `sectionMappings` for block-level navigation and `fieldMappings` to highlight/edit one specific field. Together, the two fields unblock PBI [layoutparser-portal#128](https://github.com/LayoutParser/layoutparser-portal/issues/128) (field highlight).
 
 | Field | Semantics |
 |-------|-----------|
@@ -509,10 +507,9 @@ Exemplo completo — resolução do CNPJ do emitente:
 
 Design completo / Full design: [`docs/architecture/design-contrato-fieldmappings-execute-candidates-issue-141.md`](docs/architecture/design-contrato-fieldmappings-execute-candidates-issue-141.md) · [`docs/architecture/design-resolucao-estrutural-txt-xml-issue-140.md`](docs/architecture/design-resolucao-estrutural-txt-xml-issue-140.md). Endpoint isolado equivalente (mesmo motor, mesmo tipo de dado, não embutido em `execute-candidates`): `POST /api/transformationexecution/field-mappings`.
 
-### Rastreabilidade TXT↔XML por linha/seção — Fase 0 (Issue LayoutParserApi #138 / LayoutParserReact #126) / Row/section TXT↔XML traceability — Phase 0
+### Rastreabilidade TXT↔XML por linha/seção — Fase 0 (Issue layoutparser-api#138 / layoutparser-portal#126) / Row/section TXT↔XML traceability — Phase 0
 
-**🇧🇷** `POST /api/transformationexecution/execute-candidates` ganhou dois campos **aditivos** por candidato (não quebram clientes existentes): [`sectionMappings`](Models/Transformation/SectionMapping.cs) e `xmlNamespaces`. Eles mapeiam **de qual linha/seção do TXT** veio **qual nó do XML** gerado — granularidade de **LINHA/SEÇÃO, não de CAMPO**. Rastreabilidade campo-a-campo (`fieldMappings`) já foi entregue nas issues #140/#141 — ver seção acima. `sectionMappings` continua existindo como o nível linha/seção, complementar a `fieldMappings` (não substituído por ele): juntos, os dois campos desbloqueiam a PBI [LayoutParserReact #128](https://github.com/LayoutParser/LayoutParserReact/issues/128) (highlight de campo).
-**🇧🇷** `POST /api/transformationexecution/execute-candidates` ganhou dois campos **aditivos** por candidato (não quebram clientes existentes): [`sectionMappings`](Models/Transformation/SectionMapping.cs) e `xmlNamespaces`. Eles mapeiam **de qual linha/seção do TXT** veio **qual nó do XML** gerado — granularidade de **LINHA/SEÇÃO, não de CAMPO**. Rastreabilidade campo-a-campo (o que alimentaria highlight de campo no front) é escopo das issues #140/#141, ainda não implementado; `sectionMappings` sozinho **não desbloqueia** a PBI [LayoutParserReact #128](https://github.com/LayoutParser/LayoutParserReact/issues/128) (highlight de campo).
+**🇧🇷** `POST /api/transformationexecution/execute-candidates` ganhou dois campos **aditivos** por candidato (não quebram clientes existentes): [`sectionMappings`](Models/Transformation/SectionMapping.cs) e `xmlNamespaces`. Eles mapeiam **de qual linha/seção do TXT** veio **qual nó do XML** gerado — granularidade de **LINHA/SEÇÃO, não de CAMPO**. Rastreabilidade campo-a-campo (`fieldMappings`) já foi entregue nas issues #140/#141 — ver seção acima. `sectionMappings` continua existindo como o nível linha/seção, complementar a `fieldMappings` (não substituído por ele): juntos, os dois campos desbloqueiam a PBI [layoutparser-portal#128](https://github.com/LayoutParser/layoutparser-portal/issues/128) (highlight de campo).
 
 Exemplo de payload (linha `ZRSDM_NFE_400_EMIT` mapeada estruturalmente para o nó de emitente do XML):
 
@@ -546,8 +543,7 @@ Exemplo de payload (linha `ZRSDM_NFE_400_EMIT` mapeada estruturalmente para o n�
 - `xmlNamespaces` é reportado **uma vez por candidato** (não repetido por mapping) e é `null` sempre que `sectionMappings` também é `null`/vazio.
 - `source.lineOccurrence` distingue ocorrências quando a mesma linha alimenta múltiplos destinos estruturalmente distintos dentro do mesmo mapper — não é a ocorrência física real dentro do TXT recebido nesta chamada (fora do escopo da Fase 0).
 
-**🇺🇸** `POST /api/transformationexecution/execute-candidates` gained two **additive** per-candidate fields (safe for existing clients): [`sectionMappings`](Models/Transformation/SectionMapping.cs) and `xmlNamespaces`. They map **which TXT row/section** produced **which XML node** — **row/section granularity, not field-level**. Field-level traceability (`fieldMappings`) has already shipped as issues #140/#141 — see the section above. `sectionMappings` remains the row/section level, complementary to (not replaced by) `fieldMappings`: together, the two fields unblock PBI [LayoutParserReact #128](https://github.com/LayoutParser/LayoutParserReact/issues/128) (field highlight).
-**🇺🇸** `POST /api/transformationexecution/execute-candidates` gained two **additive** per-candidate fields (safe for existing clients): [`sectionMappings`](Models/Transformation/SectionMapping.cs) and `xmlNamespaces`. They map **which TXT row/section** produced **which XML node** — **row/section granularity, not field-level**. Field-level traceability (what would power front-end field highlighting) is the scope of issues #140/#141, not implemented yet; `sectionMappings` alone **does not unblock** PBI [LayoutParserReact #128](https://github.com/LayoutParser/LayoutParserReact/issues/128) (field highlight).
+**🇺🇸** `POST /api/transformationexecution/execute-candidates` gained two **additive** per-candidate fields (safe for existing clients): [`sectionMappings`](Models/Transformation/SectionMapping.cs) and `xmlNamespaces`. They map **which TXT row/section** produced **which XML node** — **row/section granularity, not field-level**. Field-level traceability (`fieldMappings`) has already shipped as issues #140/#141 — see the section above. `sectionMappings` remains the row/section level, complementary to (not replaced by) `fieldMappings`: together, the two fields unblock PBI [layoutparser-portal#128](https://github.com/LayoutParser/layoutparser-portal/issues/128) (field highlight).
 
 **Mandatory semantics of `sectionMappings`:**
 
@@ -582,7 +578,7 @@ suggestions, approving and publishing releases), and one non-negotiable cross-cu
 execution across every route, present or future.
 
 > ⚠️ **Estado / Status:** capacidade nova, ainda **não documentada em `sectionMappings`/`fieldMappings`
-> nem consumida pelo front-end** ([LayoutParserReact](#2-ecossistema-de-projetos--project-ecosystem)).
+> nem consumida pelo front-end** ([layoutparser-portal](#2-ecossistema-de-projetos--project-ecosystem)).
 > Validação de contrato cross-repo (`@lp-contract-qa`) para os slices já mesclados **ainda não
 > ocorreu** — não tratar como "pronto para consumo" até essa validação existir. Detalhe completo,
 > decisões e histórico de auditoria: [`docs/architecture/resumo-sessao-2026-08-31.md`](docs/architecture/resumo-sessao-2026-08-31.md).
@@ -608,7 +604,7 @@ at the time each slice doc was written) lives in the two docs linked above.
 
 ### 8.1 Contrato para o front: RBAC, erro otimista e diff estruturado / Front-end contract
 
-**🇧🇷** Referência do que a API **já expõe hoje** para o [LayoutParserReact](#2-ecossistema-de-projetos--project-ecosystem)
+**🇧🇷** Referência do que a API **já expõe hoje** para o [layoutparser-portal](#2-ecossistema-de-projetos--project-ecosystem)
 consumir sem esperar backend novo (issue #376, derivada do cross-check #226/#198):
 
 - **Matriz de RBAC** dos endpoints de mapping (`approve` = `reviewer`/`fiscal_admin`;
@@ -651,7 +647,7 @@ Análise de delta que originou este fechamento:
 **🇧🇷** Issue #425 (endpoint) + #430 (correção de identidade de nó). Devolve, para um `mappingId`
 Sysmiddle já conhecido, a árvore completa dos layouts de **origem** e **destino** (hierarquia,
 atributos, cardinalidade) mais os vínculos diretos campo→campo entre as duas árvores — pensado
-para o [LayoutParserReact](#2-ecossistema-de-projetos--project-ecosystem) replicar a UI de
+para o [layoutparser-portal](#2-ecossistema-de-projetos--project-ecosystem) replicar a UI de
 dupla-árvore do Connect Us. Rota de leitura: `[ApiController]`
 [`Controllers/LayoutTreeController.cs`](Controllers/LayoutTreeController.cs), DTOs em
 [`Models/Dtos/Fiscal/LayoutTree.cs`](Models/Dtos/Fiscal/LayoutTree.cs).
@@ -952,7 +948,7 @@ folder (it stores customer fiscal documents).
 | `Ollama:Url` / `Ollama:Model` | LLM local (`http://localhost:11434`, `deepseek-coder:6.7b`). |
 | `Gemini` / `OpenAI` | Provedores de LLM em nuvem. **Use secrets!** |
 | `LowCode` | Runner Sysmiddle (`RunnerPath`, `SysmiddleDir`, `AllowedPackageGuids`). |
-| `LayoutParserDecrypt:Path` | Caminho do `.exe` de descriptografia. |
+| `LayoutParserDecrypt:BaseUrl` | URL base do serviço de descriptografia. |
 | `TransformationPipeline` | Caminhos de TCL/XSL/exemplos/modelos aprendidos. |
 | `XsdValidation` | XSDs por tipo de documento fiscal (NFe, CTe, NFCom, MDFe). |
 | `ReferenceExamples:BasePath` | Corpus de exemplos reais TCL/XSL da Neogrid (vazio por padrão; lista vazia se ausente). Ver §8.7. |
@@ -972,13 +968,13 @@ folder (it stores customer fiscal documents).
 - **Redis** (opcional — a API sobe sem ele, sem cache)
 - **SQL Server** acessível (string em `Database`)
 - **Ollama** rodando (opcional, para features de IA local)
-- **LayoutParserLib** buildada (a API referencia `..\LayoutParserLib\bin\Debug\LayoutParserLib.dll`)
+- **layoutparser-lib** buildada (a API referencia `..\layoutparser-lib\bin\Debug\LayoutParserLib.dll`)
 
 ### Local
 
 ```bash
 # 1. Restaurar e buildar a lib referenciada primeiro
-dotnet build ../LayoutParserLib/LayoutParserLib.sln
+dotnet build ../layoutparser-lib/LayoutParserLib.sln
 
 # 2. Configurar segredos (OBRIGATÓRIO — o appsettings.json tem placeholders vazios, ver §11)
 #    O UserSecretsId já está no .csproj; basta setar os valores:
@@ -1069,7 +1065,7 @@ Instruções de instalação do binário `gitleaks` e detalhes do hook:
 ### 11.1 Identidade e autenticação (BFF → API)
 
 **🇧🇷** A API **não autentica ninguém diretamente** — ela **confia** na identidade que chega de um
-**BFF Fastify** (repo `LayoutParserReact/server/`), que faz login via **Microsoft Entra ID (OIDC)**
+**BFF Fastify** (repo `layoutparser-portal/server/`), que faz login via **Microsoft Entra ID (OIDC)**
 e faz proxy de `/api` para esta API. Arquitetura em 3 camadas:
 
 ```
@@ -1090,7 +1086,7 @@ Browser  ──(Entra OIDC, sessão cifrada)──►  BFF Fastify  ──(proxy
   mecanismo de defesa da fronteira BFF↔API.
 
 **🇺🇸** The API does **not** authenticate anyone directly — it **trusts** the identity forwarded by
-a **Fastify BFF** (`LayoutParserReact/server/`), which handles login via **Microsoft Entra ID
+a **Fastify BFF** (`layoutparser-portal/server/`), which handles login via **Microsoft Entra ID
 (OIDC)** and proxies `/api` to this API. See the PT-BR diagram above for the 3-layer flow. The old
 shared-API-key mechanism (`ApiKeyGateFilter`/`Security:ApiKey`) has been **removed**.
 
@@ -1118,7 +1114,7 @@ Detalhe completo (decisão, sequência, evidência de teste): [`docs/architectur
 ## 13. Estrutura de pastas / Project structure
 
 ```
-LayoutParserApi/
+layoutparser-api/
 ├── Controllers/            # Endpoints HTTP (Parse, Transformation, Learning, RAG, ...)
 ├── Services/
 │   ├── Parsing/            # Detecção, split, normalização, validação de layout
@@ -1171,7 +1167,7 @@ LayoutParserApi/
 - [ ] **Testes automatizados:** ampliar cobertura de `Services/Testing`.
 - [ ] **MCP Server:** expandir o conjunto de *tools* e publicar o registro em `.mcp.json`.
 - [x] **Fundação da plataforma fiscal (Slices 1-7):** identidade/workspace, `FiscalMappingPackage`, `MappingDraft` human-in-the-loop, `MappingExplanation`/explicabilidade Sysmiddle, compilação determinística + Fiscal Test Lab, gate transversal Sysmiddle e governança/publicação (RBAC, `MappingRelease`, `MappingTransition`) mesclados — ver [§8](#8-fundação-da-plataforma-fiscal--fiscal-platform-foundation).
-- [ ] **Validação `@lp-contract-qa`:** nenhum slice da plataforma fiscal ainda teve validação de contrato cross-repo para consumo pelo `LayoutParserReact`; falta também rodar o runbook manual com dado real do Slice 7 (gate FIAT síntetico já PASS).
+- [ ] **Validação `@lp-contract-qa`:** nenhum slice da plataforma fiscal ainda teve validação de contrato cross-repo para consumo pelo `layoutparser-portal`; falta também rodar o runbook manual com dado real do Slice 7 (gate FIAT síntetico já PASS).
 
 ---
 

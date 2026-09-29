@@ -1,11 +1,20 @@
 name: Dependency review
 
-# Bloqueia PR que introduz dependencia (NuGet/npm/etc.) com vulnerabilidade conhecida de
-# severidade alta ou critica. Cobre master E develop porque e o nosso fluxo real de PR
-# (feat/** -> develop -> master), nao so a branch de release.
+# Bloqueia PR que introduz dependencia (NuGet/npm/etc.) com vulnerabilidade conhecida.
+# Cobre master E develop porque e o nosso fluxo real de PR (feat/** -> develop -> master),
+# nao so a branch de release.
+#
+# fail-on-severity: moderate - harmonizado com layoutparser-portal (2026-09-25). Nao havia
+# justificativa registrada para o "high" anterior (era so a config default copiada quando o
+# workflow foi criado, nao uma decisao deliberada de tolerancia a risco) - portanto adotado
+# o valor mais rigoroso do portal em vez de documentar excecao sem motivo real.
 on:
   pull_request:
     branches: [ "master", "develop" ]
+
+concurrency:
+  group: dependency-review-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -16,9 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Dependency Review
-        uses: actions/dependency-review-action@v5
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           comment-summary-in-pr: always
-          fail-on-severity: high
+          fail-on-severity: moderate
