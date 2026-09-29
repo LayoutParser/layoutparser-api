@@ -25,6 +25,8 @@ jobs:
     runs-on: [self-hosted, linux, production]
     timeout-minutes: 30
     env:
+      # setup-dotnet instala em /usr/share/dotnet por padrao (sem permissao para o usuario do runner): usar o tool cache.
+      DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH_PROD_LINUX || '/opt/layoutparser-api' }}
       API_URL: ${{ vars.API_URL_PROD_LINUX || 'http://localhost:5000' }}
     steps:
