@@ -48,6 +48,7 @@ jobs:
         sudo rm -rf "${DEPLOY_PATH}.prev"; [ -d "$DEPLOY_PATH" ] && sudo cp -a "$DEPLOY_PATH" "${DEPLOY_PATH}.prev" || true
         sudo mkdir -p "$DEPLOY_PATH"
         sudo rsync -a --delete "$RUNNER_TEMP/publish/" "$DEPLOY_PATH/"
+        sudo cp layoutparser-api/deploy/linux/appsettings.Production.json "$DEPLOY_PATH/appsettings.Production.json"
         sudo cp layoutparser-api/deploy/linux/layoutparser-api.service /etc/systemd/system/layoutparser-api.service
         sudo systemctl daemon-reload
         sudo systemctl enable layoutparser-api

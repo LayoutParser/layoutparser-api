@@ -1,5 +1,7 @@
 # Fase 1 - Inventario de compatibilidade do LayoutParserLib (issue #576, Epic #575)
 
+> **Atualização 2026-09-29:** a `LayoutParserLib` foi removida/arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt` (fonte da verdade). Menções à Lib abaixo são contexto histórico.
+
 **Conclusao (2026-09-29): a API NAO depende do LayoutParserLib. Decisao do dono: considerar "portavel sem alteracao" e remover.**
 
 Evidencias:
@@ -16,4 +18,4 @@ Acoes tomadas:
 - Pipelines Windows (`deploy.yml`, `ci-dev.yml`, `pr-validate.yml`) NAO foram alterados (ainda constroem a Lib e a
   copiam para o Decrypt); limpar depois do cutover.
 
-Pendente: arquivar `layoutparser-lib` apos confirmar no repo do Decrypt que nenhum build referencia a pasta `LayoutParserLib\*.cs`.
+Concluido (2026-09-29): `layoutparser-lib` arquivada; a criptografia vive no `layoutparser-decrypt`. Pendencia remanescente: pipelines Windows (`deploy.yml`, `ci-dev.yml`, `pr-validate.yml`) podem ainda referenciar a Lib (nao verificado nesta revisao).

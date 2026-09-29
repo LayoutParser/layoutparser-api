@@ -1,5 +1,7 @@
 # ADR — Segregação de Decrypt e LowCodeRunner em serviços de rede, para viabilizar migração da API para Linux
 
+> **Atualização 2026-09-29:** a `LayoutParserLib` foi removida/arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt` (fonte da verdade). Menções à Lib abaixo são contexto histórico.
+
 > `@lp-architect` (Aria), 2026-09-25. Formalização de duas rodadas de análise já feitas nesta
 > sessão de trabalho, a pedido explícito do dono, antes de iniciar a implementação.
 > Decisão de arquitetura — **não implementada aqui**. Execução: `@lp-backend-dev` (código) +

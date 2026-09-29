@@ -1,5 +1,7 @@
 # Design — Slice 7: Governança/Publicação + Piloto FIAT (issue #94, seções 12/14)
 
+> **Atualização 2026-09-29:** a `LayoutParserLib` foi removida/arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt` (fonte da verdade). Menções à Lib abaixo são contexto histórico.
+
 > Autora: `@lp-architect` (Aria) · 2026-09-01 · Só design, sem código. Último slice da
 > fundação. Depende de Slice 5 (`MappingRelease` em `draft_compiled`/`test_passed`/`test_failed`)
 > e Slice 6 (gate Sysmiddle já confirmado não-vetor).

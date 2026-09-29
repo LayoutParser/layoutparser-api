@@ -14,7 +14,7 @@
 
 1. [O que é o LayoutParser / What is LayoutParser](#1-o-que-é-o-layoutparser--what-is-layoutparser)
 2. [Arquitetura em 3 camadas / 3-layer architecture](#2-arquitetura-em-3-camadas--3-layer-architecture)
-3. [Os 4 repositórios / The 4 repositories](#3-os-4-repositórios--the-4-repositories)
+3. [Os 3 repositórios / The 3 repositories](#3-os-3-repositórios--the-3-repositories)
 4. [Visão de IA / AI vision](#4-visão-de-ia--ai-vision)
 5. [Como contribuir / How to contribute](#5-como-contribuir--how-to-contribute)
 6. [Segurança / Security](#6-segurança--security)
@@ -76,10 +76,10 @@ listens on every network interface.
 
 > Estado real, não aspiracional — ver [§6](#6-segurança--security).
 
-**🇧🇷** Diagrama de fluxo (renderiza nativamente no GitHub), com os 4 repositórios identificados em
+**🇧🇷** Diagrama de fluxo (renderiza nativamente no GitHub), com os 3 repositórios identificados em
 cada camada e as dependências de infraestrutura reais:
 
-**🇺🇸** Flow diagram (renders natively on GitHub), with the 4 repositories identified per layer and
+**🇺🇸** Flow diagram (renders natively on GitHub), with the 3 repositories identified per layer and
 the real infrastructure dependencies:
 
 ```mermaid
@@ -101,10 +101,6 @@ flowchart TB
         DecryptExe["LayoutParserDecrypt.exe<br/>processo externo / external process"]
     end
 
-    subgraph Lib["📦 layoutparser-lib"]
-        Crypto["Cripto Sysmiddle canônica<br/>canonical Sysmiddle crypto"]
-    end
-
     Browser -->|"Entra OIDC<br/>sessão cifrada"| BFF
     BFF -->|"proxy /api<br/>x-iis-user / x-iis-roles"| MW
     MW --> Core
@@ -112,7 +108,6 @@ flowchart TB
     Core --> Redis
     Core --> Ollama
     Core --> DecryptExe
-    DecryptExe -. "copia .cs de cripto/logger<br/>(não referencia a DLL)" .-> Crypto
 
     classDef pending stroke-dasharray: 5 5
     class MW pending
@@ -130,13 +125,12 @@ Browser↔BFF is intentionally not drawn here as confirmed, since it wasn't veri
 
 ---
 
-## 3. Os 4 repositórios / The 4 repositories
+## 3. Os 3 repositórios / The 3 repositories
 
 | Repositório | Papel / Role | Stack |
 |-------------|---------------|-------|
 | **[layoutparser-api](https://github.com/LayoutParser/layoutparser-api)** | **Hub** — orquestra parse, cache, IA/ML, transformação e logging. *Source of truth* do runtime. | ASP.NET Core (.NET 10) |
-| **[layoutparser-lib](https://github.com/LayoutParser/layoutparser-lib)** | Biblioteca canônica de **criptografia Sysmiddle** (`CryptographySysMiddle.Decrypt`) e logger em arquivo compartilhados. | .NET Framework 4.8.1 (class library) |
-| **[layoutparser-decrypt](https://github.com/LayoutParser/layoutparser-decrypt)** | Console `.exe` que descriptografa layouts/mappers da Sysmiddle — invocado pela API como **processo externo**, porque a API (net10) não roda o `RijndaelManaged` legado em processo de forma compatível. | .NET Framework 4.8.1 (console) |
+| **[layoutparser-decrypt](https://github.com/LayoutParser/layoutparser-decrypt)** | **Fonte da verdade da criptografia Sysmiddle** (embute `CryptographySysMiddle.cs` e `RollingFileLogger.cs`; a antiga `layoutparser-lib` foi arquivada em 2026-09-29). Descriptografa layouts/mappers da Sysmiddle — invocado pela API como **processo externo**, porque a API (net10) não roda o `RijndaelManaged` legado em processo de forma compatível. | .NET Framework 4.8.1 (serviço Windows) |
 | **[layoutparser-portal](https://github.com/LayoutParser/layoutparser-portal)** | **Front-end** (upload, render da estrutura parseada, edição de layouts) + **BFF Fastify** (`server/`) que faz login via Entra OIDC e faz proxy autenticado para a API. | Vite + React + TypeScript · Node/Fastify |
 
 ```
@@ -149,20 +143,16 @@ layoutparser-portal/server (BFF Fastify)
 layoutparser-api (.NET 10) ── Parse ── Cache(Redis) ── Learning/RAG ── Transformation
         │                       │                                        │
         ▼                       ▼                                        ▼
-LayoutParserDecrypt.exe   SQL Server                              LLM (Ollama local)
-   (descriptografia)   (ConnectUS_Macgyver
+layoutparser-decrypt      SQL Server                              LLM (Ollama local)
+(cripto Sysmiddle)   (ConnectUS_Macgyver
         │                — source of truth)
         ▼
-layoutparser-lib (cripto canônica — Decrypt copia as fontes; API não a referencia em runtime)
+(fonte da verdade da criptografia Sysmiddle; a antiga layoutparser-lib foi arquivada em 2026-09-29)
 ```
 
-**🇧🇷** Nota de paridade: o `layoutparser-decrypt` **copia** os `.cs` de cripto/logger do `layoutparser-lib`
-em vez de referenciar a DLL, para que seu CI compile de forma autocontida. As cópias já divergiram no
-passado — sincronizar as duas ao alterar a cripto é responsabilidade cross-repo.
+**🇧🇷** Atualização 2026-09-29: a `layoutparser-lib` foi arquivada. O `layoutparser-decrypt` embute `CryptographySysMiddle.cs` e `RollingFileLogger.cs` e é a fonte da verdade da criptografia (já com a cópia mais nova); não há mais paridade cross-repo a manter.
 
-**🇺🇸** Parity note: `layoutparser-decrypt` **copies** the crypto/logger `.cs` files from
-`layoutparser-lib` instead of referencing the DLL, so its CI builds standalone. The copies have
-diverged before — keeping them in sync when touching the crypto is a cross-repo responsibility.
+**🇺🇸** Update 2026-09-29: `layoutparser-lib` was archived. `layoutparser-decrypt` embeds `CryptographySysMiddle.cs` and `RollingFileLogger.cs` and is the source of truth for the crypto (with the newer copy); there is no cross-repo parity to maintain anymore.
 
 ---
 
@@ -248,7 +238,7 @@ explicit authorization. Full detail (flow, services, roadmap) in the
 - 🔴 **Segredos comprometidos aguardando rotação/revogação:** a senha do SQL Server e a (já
   decomissionada) API key do Gemini estiveram em texto plano no histórico do `layoutparser-api`.
   Remoção do código/config está feita; **rotação da senha SQL** e **revogação da key do Gemini**
-  seguem como ação do operador. A chave/IV de criptografia do `layoutparser-lib`/`layoutparser-decrypt`
+  seguem como ação do operador. A chave/IV de criptografia do `layoutparser-decrypt`
   também estão **hardcoded no código-fonte** — limitação conhecida, documentada nos READMEs desses
   repos.
 
@@ -270,12 +260,12 @@ explicit authorization. Full detail (flow, services, roadmap) in the
 - 🔴 **Compromised secrets awaiting rotation/revocation:** the SQL Server password and the (now
   decommissioned) Gemini API key were exposed in plaintext in `layoutparser-api`'s git history.
   Code/config removal is done; **SQL password rotation** and **Gemini key revocation** remain operator
-  actions. The `layoutparser-lib`/`layoutparser-decrypt` encryption key/IV are also **hardcoded in
+  actions. The `layoutparser-decrypt` encryption key/IV are also **hardcoded in
   source** — a known limitation, documented in those repos' READMEs.
 
 > Detalhe completo por repositório: `.claude/rules/security.md` e
 > `docs/architecture/rollout-p2-autenticacao.md` no `layoutparser-api`; seção de segurança nos READMEs
-> do `layoutparser-lib` e `layoutparser-decrypt`.
+> do `layoutparser-decrypt`.
 
 ---
 
@@ -314,4 +304,4 @@ behavior/state.
 
 ---
 
-<p align="center"><sub>LayoutParser · ecossistema de 4 repositórios · documentação bilíngue mantida para fins acadêmicos e operacionais.</sub></p>
+<p align="center"><sub>LayoutParser · ecossistema de 3 repositórios · documentação bilíngue mantida para fins acadêmicos e operacionais.</sub></p>

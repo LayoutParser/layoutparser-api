@@ -52,13 +52,12 @@ A API casa os dois, devolve a **estrutura parseada** (linhas → campos → valo
 
 ## 2. Ecossistema de projetos / Project ecosystem
 
-**🇧🇷** Esta API é o **ponto de conexão** de quatro repositórios. **🇺🇸** This API is the **connection hub** of four repositories.
+**🇧🇷** Esta API é o **ponto de conexão** de três repositórios. **🇺🇸** This API is the **connection hub** of three repositories. *(Atualização 2026-09-29: a `layoutparser-lib` foi arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt`. / The `layoutparser-lib` was archived; Sysmiddle crypto now lives in `layoutparser-decrypt`.)*
 
 | Repositório | Tipo | Papel / Role |
 |-------------|------|--------------|
 | **layoutparser-api** *(este)* | ASP.NET Core 10 Web API | Orquestra parse, cache, IA/ML, transformação e logging. **Source of truth do runtime.** |
-| **layoutparser-lib** | .NET Class Library (DLL) | Criptografia Sysmiddle (`CryptographySysMiddle`) e utilitários compartilhados. Referenciada pela API via `HintPath`. |
-| **layoutparser-decrypt** | .NET Console (`.exe`) | Descriptografa os layouts/pacotes Sysmiddle. Invocado pela API como processo externo. |
+| **layoutparser-decrypt** | .NET Framework (serviço Windows) | **Criptografia Sysmiddle** (embute `CryptographySysMiddle.cs` e `RollingFileLogger.cs`; fonte da verdade). Descriptografa layouts/pacotes; a API o consome via HTTP (sidecar). |
 | **layoutparser-portal** | Vite + React + TypeScript | Front-end: upload de arquivos, render da estrutura parseada, edição de layouts. |
 
 ```
@@ -77,12 +76,12 @@ A API casa os dois, devolve a **estrutura parseada** (linhas → campos → valo
               │           │              │                │
    ┌──────────┘   ┌───────┘        ┌─────┘          ┌─────┘
    ▼              ▼                ▼                ▼
-layoutparser-lib Redis        SQL Server        LLM (Ollama /
-(crypto .dll)   (layouts/   (ConnectUS_Macgyver  Gemini / OpenAI)
+layoutparser-decrypt Redis    SQL Server        LLM (Ollama /
+(cripto Sysmiddle)  (layouts/   (ConnectUS_Macgyver  Gemini / OpenAI)
                  mappers)     — source of truth)
    │
    ▼
-LayoutParserDecrypt.exe  (descriptografia Sysmiddle)
+(serviço Windows: criptografia/descriptografia Sysmiddle)
 ```
 
 > **🔌 MCP** · Um **MCP Server em C#** (ver [§14](#14-harness-claude-code--mcp)) expõe as operações da API como *tools* para agentes de IA, transformando este ecossistema num conjunto de ferramentas operáveis por LLMs.
@@ -282,7 +281,7 @@ Without a `groundTruthXml` (State A, "generate from scratch"), the convergence c
 | Docs | **Swashbuckle / Swagger** | OpenAPI em Development |
 | LLM | **Ollama** (deepseek-coder/Llama), **Gemini**, **OpenAI** | Geração e aprendizado |
 | Container | **Docker** (`Dockerfile`, target Linux) | Deploy |
-| Crypto | **LayoutParserLib.dll** | Criptografia Sysmiddle |
+| Crypto | **layoutparser-decrypt** (serviço Windows) | Criptografia Sysmiddle |
 
 ---
 
@@ -968,13 +967,12 @@ folder (it stores customer fiscal documents).
 - **Redis** (opcional — a API sobe sem ele, sem cache)
 - **SQL Server** acessível (string em `Database`)
 - **Ollama** rodando (opcional, para features de IA local)
-- **layoutparser-lib** buildada (a API referencia `..\layoutparser-lib\bin\Debug\LayoutParserLib.dll`)
+- Sidecar **layoutparser-decrypt** acessível (a API não referencia mais a `LayoutParserLib`, arquivada em 2026-09-29)
 
 ### Local
 
 ```bash
-# 1. Restaurar e buildar a lib referenciada primeiro
-dotnet build ../layoutparser-lib/LayoutParserLib.sln
+# 1. (Removido em 2026-09-29) Não há mais lib a buildar antes: a LayoutParserLib foi arquivada
 
 # 2. Configurar segredos (OBRIGATÓRIO — o appsettings.json tem placeholders vazios, ver §11)
 #    O UserSecretsId já está no .csproj; basta setar os valores:

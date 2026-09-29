@@ -42,7 +42,7 @@ COPY --from=publish /app/publish .
 # Se estiver em Linux, você precisará de uma solução alternativa (Wine, serviço externo, etc.)
 # Para Windows Container, copie os arquivos do build do LayoutParserDecrypt
 # COPY --from=decrypt-build /path/to/LayoutParserDecrypt.exe ./
-# COPY --from=decrypt-build /path/to/LayoutParserLib.dll ./
+# (LayoutParserLib.dll não é mais necessária: a lib foi arquivada; a criptografia vive no layoutparser-decrypt)
 
 # Configurar variáveis de ambiente para produção
 ENV ASPNETCORE_ENVIRONMENT=Production

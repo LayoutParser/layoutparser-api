@@ -1,5 +1,7 @@
 # Slice 6 — Gate transversal contra mutação Sysmiddle (issue #232)
 
+> **Atualização 2026-09-29:** a `LayoutParserLib` foi removida/arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt` (fonte da verdade). Menções à Lib abaixo são contexto histórico.
+
 ## 1. Inventário de endpoints Sysmiddle-adjacentes
 
 ### A) Pathway antigo (execução, pré-existente)
