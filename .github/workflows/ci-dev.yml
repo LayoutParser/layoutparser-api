@@ -536,6 +536,10 @@ jobs:
 
         # LayoutParserDecrypt.exe (+ config) - processo externo de descriptografia.
         $DECRYPT_BIN = Join-Path $PWD.Path "layoutparser-decrypt\bin\Release"
+        # O csproj do Decrypt e SDK-style (net48): a saida vai para bin\Release\net48. Sem isto o exe novo
+        # nao era copiado e o sidecar rodava o binario legado (CLI) que ficou no destino.
+        $DECRYPT_NET48 = Join-Path $DECRYPT_BIN "net48"
+        if (Test-Path (Join-Path $DECRYPT_NET48 "LayoutParserDecrypt.exe")) { $DECRYPT_BIN = $DECRYPT_NET48 }
         foreach ($f in @('LayoutParserDecrypt.exe', 'LayoutParserDecrypt.exe.config')) {
           $p = Join-Path $DECRYPT_BIN $f
           if (Test-Path $p) {
