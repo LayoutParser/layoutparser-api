@@ -27,21 +27,9 @@ jobs:
       with:
         path: layoutparser-api
 
-    # BLOQUEIO CONHECIDO (Fase 1, #576): a API referencia LayoutParserLib.dll (net48/HintPath).
-    # Enquanto a Lib nao for portada/sidecar, este build so passa se a DLL estiver disponivel.
-    - uses: actions/checkout@v7
-      with:
-        repository: LayoutParser/layoutparser-lib
-        path: layoutparser-lib
-        token: ${{ secrets.GH_PAT_TOKEN || secrets.GITHUB_TOKEN }}
-        fetch-depth: 1
-
     - uses: actions/setup-dotnet@v6
       with:
         dotnet-version: '10.0.x'
-
-    - name: Build LayoutParserLib (Debug)
-      run: dotnet build layoutparser-lib/LayoutParserLib.csproj --configuration Debug
 
     - name: Build e testes
       run: |
