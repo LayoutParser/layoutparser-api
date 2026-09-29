@@ -789,6 +789,9 @@ jobs:
         $healthUrl = "http://localhost:$porta/health"
         $script = Join-Path $PWD.Path "layoutparser-decrypt\scripts\install-service.ps1"
         $exe = Join-Path $PWD.Path "layoutparser-decrypt\bin\Release\net48\LayoutParserDecrypt.exe"
+        # Convencao do dono: cada API em pasta propria sob a raiz de deploy (<deploy>/decrypt, ex.: C:/inetpub/wwwroot/layoutparser/decrypt).
+        $decryptDir = Join-Path $env:DEPLOY_PATH_RESOLVED "decrypt"
+        $decryptLogs = Join-Path $decryptDir "logs"
 
         foreach ($p in @($script, $exe)) {
           if (-not (Test-Path $p)) {
@@ -797,7 +800,7 @@ jobs:
           }
         }
 
-        & $script -ExeSource $exe -BindAddress localhost -Port $porta
+        & $script -ExeSource $exe -BindAddress localhost -Port $porta -InstallDir $decryptDir -LogDir $decryptLogs
         if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
           Write-Error "install-service.ps1 falhou (exit $LASTEXITCODE)."
           exit 1
@@ -817,7 +820,7 @@ jobs:
           Write-Host "--- Diagnostico do servico Decrypt ---"
           $s = Get-Service -Name "LayoutParserDecrypt" -ErrorAction SilentlyContinue
           Write-Host ("Servico: " + $(if ($s) { $s.Status } else { "NAO instalado" }))
-          $logDir = "C:\ProgramData\LayoutParserDecrypt\logs"
+          $logDir = $decryptLogs
           $ultimo = Get-ChildItem -Path $logDir -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if ($ultimo) {
             Write-Host "--- Fim de $($ultimo.Name) ---"
