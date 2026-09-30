@@ -40,6 +40,9 @@ namespace LayoutParserApi.Tests.Security
             ["AdminController.WorkspaceMembers"] =
                 "GET /api/admin/workspaces/{workspaceId}/members: visão GLOBAL do super-administrador, cross-workspace de propósito. Protegida por [RequireSudo] no controller (não-sudo -> 404; sudo só por e-mail em Security:SudoEmails, com auditoria por acesso) — ver SudoTests.",
 
+            ["AdminController.UpdateWorkspace"] =
+                "PATCH /api/admin/workspaces/{workspaceId}: promoção/renomeio de workspace pelo super-administrador, cross-workspace de propósito. Protegida por [RequireSudo] no controller (não-sudo -> 404), só promove a 'team' (nunca rebaixa) e é auditada — ver AdminControllerTests/SudoTests.",
+
             ["FiscalMappingPackagesController.CreatePackage"] = ViaMembershipManual,
             ["FiscalMappingPackagesController.ListProjects"] = ViaMembershipManual,
             ["FiscalMappingPackagesController.CreateRevision"] = ViaMembershipManual,

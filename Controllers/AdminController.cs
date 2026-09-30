@@ -11,6 +11,9 @@ namespace LayoutParserApi.Controllers
     /// workspace: o 404 para membros comuns continua igual. Não-sudo recebe 404 (rota não revela existência)
     /// e cada acesso concedido é auditado (<see cref="RequireSudoAttribute"/> + <see cref="AuditActionFilter"/>).
     /// </summary>
+    /// <summary>Corpo de <c>PATCH /api/admin/workspaces/{id}</c>: <c>kind</c> só aceita <c>team</c> (promoção); <c>name</c> 1..120.</summary>
+    public sealed record UpdateAdminWorkspaceRequest(string? Kind, string? Name);
+
     [ApiController]
     [Route("api/admin")]
     [RequireSudo]
@@ -42,6 +45,39 @@ namespace LayoutParserApi.Controllers
                     memberCount = w.MemberCount, createdAt = w.CreatedAt
                 }));
             });
+
+        /// <summary>
+        /// Promove um workspace pessoal a time e/ou renomeia, mantendo dono e dados. Só sudo; auditado.
+        /// </summary>
+        [HttpPatch("workspaces/{workspaceId:guid}")]
+        public Task<IActionResult> UpdateWorkspace(Guid workspaceId, [FromBody] UpdateAdminWorkspaceRequest? body, CancellationToken cancellationToken = default)
+        {
+            var kind = body?.Kind?.Trim();
+            if (kind != null && !string.Equals(kind, LayoutParserApi.Models.Entities.Identity.WorkspaceKind.Team, StringComparison.Ordinal))
+                return Task.FromResult<IActionResult>(BadRequest(new { error = "kind só aceita 'team' (promoção de workspace pessoal)." }));
+
+            string? name = null;
+            if (body?.Name != null)
+            {
+                name = new string(body.Name.Where(c => !char.IsControl(c)).ToArray()).Trim();
+                if (name.Length is < 1 or > 120)
+                    return Task.FromResult<IActionResult>(BadRequest(new { error = "Nome deve ter entre 1 e 120 caracteres." }));
+            }
+
+            if (kind == null && name == null)
+                return Task.FromResult<IActionResult>(BadRequest(new { error = "Informe kind e/ou name." }));
+
+            return Run(async () =>
+            {
+                var outcome = await _directory.UpdateWorkspaceAsync(workspaceId, name, kind != null, cancellationToken);
+                if (outcome == WorkspaceUpdateOutcome.NotFound)
+                    return NotFound(new { error = "Workspace não encontrado." });
+
+                _logger.LogWarning("AUDITORIA sudo: workspace {WorkspaceId} atualizado (promoveuParaTime={Promoveu}, renomeou={Renomeou})",
+                    workspaceId, kind != null, name != null);
+                return NoContent();
+            });
+        }
 
         [HttpGet("workspaces/{workspaceId:guid}/members")]
         public Task<IActionResult> WorkspaceMembers(Guid workspaceId, CancellationToken cancellationToken = default)
