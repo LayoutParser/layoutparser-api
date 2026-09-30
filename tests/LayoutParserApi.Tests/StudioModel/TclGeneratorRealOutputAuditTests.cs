@@ -30,13 +30,13 @@ namespace LayoutParserApi.Tests.StudioModel
             foreach (var d in r.Diagnostics) _o.WriteLine($"DIAG {d.Code} {d.Path}");
         }
 
-        [Fact(Skip = "BUG-CONHECIDO QA Fase 2: TclGeneratorService ignora hierarquia por aninhamento (so ParentElement). Remover Skip ao corrigir.")]
+        [Fact]
         public void BUG_CONHECIDO_gerador_nao_emite_CHILD_para_hierarquia_por_aninhamento()
         {
             Assert.Contains("<CHILD>LINHA_ITEM</CHILD>", Gen());
         }
 
-        [Fact(Skip = "BUG-CONHECIDO QA Fase 2: ExtractFieldsFromLine usa Descendants e duplica campos do filho no pai. Remover Skip ao corrigir.")]
+        [Fact]
         public void BUG_CONHECIDO_gerador_nao_duplica_campos_do_filho_na_linha_pai()
         {
             var r = TclReader.Read(Gen());
