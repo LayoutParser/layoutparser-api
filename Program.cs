@@ -503,6 +503,7 @@ try
     // schema incompatível). Scoped por padrão do grupo Database.
     builder.Services.AddScoped<IIdentityWorkspaceStore, SqlIdentityWorkspaceStore>();
     builder.Services.AddScoped<IWorkspaceMemberStore, SqlWorkspaceMemberStore>();
+    builder.Services.AddScoped<IAdminDirectoryStore, SqlAdminDirectoryStore>();
     // E-mail (porta/adaptador): fase 1 = SMTP do Gmail via env Email__Smtp__* (senha de app, nunca no repo).
     builder.Services.Configure<LayoutParserApi.Services.Email.EmailOptions>(builder.Configuration.GetSection("Email"));
     builder.Services.AddSingleton<LayoutParserApi.Services.Email.IEmailSender, LayoutParserApi.Services.Email.SmtpEmailSender>();

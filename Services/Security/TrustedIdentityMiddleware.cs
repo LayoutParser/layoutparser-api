@@ -89,8 +89,14 @@ namespace LayoutParserApi.Services.Security
 
                     // E-mail é best-effort: falha aqui NUNCA derruba a requisição nem invalida o UserId.
                     var email = LayoutParserApi.Services.Identity.WorkspaceEmail.Normalize(context.Request.Headers[_options.IdentityEmailHeader].ToString());
+                    // Sudo: só sob a guarda de confiança, com UserId resolvido e e-mail (verificado pelo BFF)
+                    // na lista configurada. Marca só o HttpContext desta requisição (Items não vem do cliente).
+                    if (userId != null && email != null && _options.SudoEmails.Any(e =>
+                            string.Equals(LayoutParserApi.Services.Identity.WorkspaceEmail.Normalize(e), email, StringComparison.Ordinal)))
+                        context.Items[SudoContext.ItemKey] = true;
+
                     if (userId is Guid emailUserId && email != null
-                        && context.RequestServices.GetService<IWorkspaceMemberStore>() is { } memberStore)
+                        && context.RequestServices?.GetService<IWorkspaceMemberStore>() is { } memberStore)
                     {
                         try
                         {
