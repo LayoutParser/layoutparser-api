@@ -149,19 +149,43 @@ namespace LayoutParserApi.Tests.Health
         {
             var options = Options.Create(new OllamaOptions { Url = "http://localhost:11434" });
 
-            var result = await new OllamaConfigHealthCheck(options).CheckHealthAsync(new HealthCheckContext());
+            var result = await new OllamaConfigHealthCheck(options, (_, _) => Task.FromResult(false)).CheckHealthAsync(new HealthCheckContext());
 
             Assert.Equal(HealthStatus.Degraded, result.Status);
         }
 
         [Fact]
-        public async Task Ollama_com_url_127_0_0_1_e_degraded()
+        public async Task Ollama_com_url_127_0_0_1_sem_resposta_e_degraded()
         {
             var options = Options.Create(new OllamaOptions { Url = "http://127.0.0.1:11434" });
 
-            var result = await new OllamaConfigHealthCheck(options).CheckHealthAsync(new HealthCheckContext());
+            var result = await new OllamaConfigHealthCheck(options, (_, _) => Task.FromResult(false)).CheckHealthAsync(new HealthCheckContext());
 
             Assert.Equal(HealthStatus.Degraded, result.Status);
+        }
+
+        [Fact]
+        public async Task Ollama_com_url_127_0_0_1_respondendo_e_healthy()
+        {
+            var options = Options.Create(new OllamaOptions { Url = "http://127.0.0.1:11434" });
+            string? sondado = null;
+
+            var result = await new OllamaConfigHealthCheck(options, (url, _) => { sondado = url; return Task.FromResult(true); })
+                .CheckHealthAsync(new HealthCheckContext());
+
+            Assert.Equal(HealthStatus.Healthy, result.Status);
+            Assert.Equal("http://127.0.0.1:11434", sondado);
+        }
+
+        [Fact]
+        public async Task Ollama_remoto_nao_aciona_a_sonda()
+        {
+            var options = Options.Create(new OllamaOptions { Url = "http://10.0.0.42:11434" });
+
+            var result = await new OllamaConfigHealthCheck(options, (_, _) => throw new InvalidOperationException("não deveria sondar"))
+                .CheckHealthAsync(new HealthCheckContext());
+
+            Assert.Equal(HealthStatus.Healthy, result.Status);
         }
 
         [Fact]

@@ -133,30 +133,57 @@ namespace LayoutParserApi.Services.Health
 
     /// <summary>
     /// Config órfã do Ollama: <c>Ollama:Url</c> ausente ou apontando para localhost/127.0.0.1 é sinal
-    /// forte de que a seção não foi configurada para este host — o Ollama real deste projeto roda numa
-    /// VM Linux separada, nunca no mesmo host da API (ver memória de <c>@lp-backend-dev</c>,
-    /// dev-ollama-vs-brnddappbld01-hardware). <b>Degraded</b>: diagnóstico via IA é funcionalidade
+    /// forte de que a seção não foi configurada para este host. Desde a migração Linux a API pode rodar no MESMO
+    /// host do Ollama (VM 172.25.32.5), onde loopback é válido — por isso, com loopback, o check sonda
+    /// <c>GET /api/tags</c> (timeout 2s): respondeu = Healthy; silêncio = Degraded (config órfã). <b>Degraded</b>: diagnóstico via IA é funcionalidade
     /// opcional (Gap 2) — parse/catálogo/transformação low-code seguem servindo sem ela.
     /// </summary>
     public sealed class OllamaConfigHealthCheck : IHealthCheck
     {
+        private static readonly HttpClient ProbeClient = new() { Timeout = TimeSpan.FromSeconds(2) };
+
         private readonly IOptions<OllamaOptions> _options;
+        private readonly Func<string, CancellationToken, Task<bool>> _probe;
 
-        public OllamaConfigHealthCheck(IOptions<OllamaOptions> options) => _options = options;
+        /// <param name="probe">Sonda de alcance do Ollama (URL base → respondeu?). Injetável nos testes; o padrão faz <c>GET /api/tags</c> com timeout curto.</param>
+        public OllamaConfigHealthCheck(IOptions<OllamaOptions> options, Func<string, CancellationToken, Task<bool>>? probe = null)
+        {
+            _options = options;
+            _probe = probe ?? DefaultProbeAsync;
+        }
 
-        public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+        private static async Task<bool> DefaultProbeAsync(string baseUrl, CancellationToken cancellationToken)
+        {
+            try
+            {
+                using var response = await ProbeClient.GetAsync(baseUrl.TrimEnd('/') + "/api/tags", cancellationToken);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                return false;
+            }
+        }
+
+        public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {
             var url = _options.Value.Url;
 
             if (string.IsNullOrWhiteSpace(url))
-                return Task.FromResult(HealthCheckResult.Degraded("Ollama:Url nao configurado — diagnostico via IA indisponivel."));
+                return HealthCheckResult.Degraded("Ollama:Url nao configurado — diagnostico via IA indisponivel.");
 
+            // Loopback vale quando a API roda no MESMO host do Ollama (topologia Linux atual). Só é "config
+            // órfã" se nada responde ali (ex.: API no Windows apontando pra localhost sem Ollama local).
             if (url.Contains("localhost", StringComparison.OrdinalIgnoreCase) ||
                 url.Contains("127.0.0.1", StringComparison.Ordinal))
-                return Task.FromResult(HealthCheckResult.Degraded(
-                    $"Ollama:Url aponta para localhost/127.0.0.1 ({url}) — sinal de config orfa: o Ollama real roda numa VM separada, nao no host da API."));
+            {
+                return await _probe(url, cancellationToken)
+                    ? HealthCheckResult.Healthy($"Ollama local respondendo em {url}.")
+                    : HealthCheckResult.Degraded(
+                        $"Ollama:Url aponta para localhost/127.0.0.1 ({url}) e nada respondeu ali — sinal de config orfa (o Ollama roda em outro host?).");
+            }
 
-            return Task.FromResult(HealthCheckResult.Healthy($"Ollama:Url configurado: {url}."));
+            return HealthCheckResult.Healthy($"Ollama:Url configurado: {url}.");
         }
     }
 
