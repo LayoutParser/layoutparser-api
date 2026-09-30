@@ -502,6 +502,7 @@ try
     // ConnectUS_Macgyver do Sysmiddle (reuso causava erro de FK em produção contra tbUser legada,
     // schema incompatível). Scoped por padrão do grupo Database.
     builder.Services.AddScoped<IIdentityWorkspaceStore, SqlIdentityWorkspaceStore>();
+    builder.Services.AddScoped<IWorkspaceMemberStore, SqlWorkspaceMemberStore>();
     // Histórico de longo prazo do pathway de IA por usuário (issue #102) — mesmo banco IdentityDatabase.
     builder.Services.AddScoped<LayoutParserApi.Services.Database.SqlAiUserSessionStore>();
     // ✅ Issue #97 (gap de TTL/retenção): sem isso, tbLpAiUserSessionHistoryEntry crescia

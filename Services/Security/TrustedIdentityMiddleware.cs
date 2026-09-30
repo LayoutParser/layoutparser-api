@@ -86,6 +86,21 @@ namespace LayoutParserApi.Services.Security
                     var userId = await identityWorkspaceService.ResolveOrCreateUserAsync(provider, tenant, subject, context.RequestAborted);
                     if (userId is Guid resolvedUserId && currentUser is CurrentUser cuIdentity)
                         cuIdentity.SetUserId(resolvedUserId);
+
+                    // E-mail é best-effort: falha aqui NUNCA derruba a requisição nem invalida o UserId.
+                    var email = LayoutParserApi.Services.Identity.WorkspaceEmail.Normalize(context.Request.Headers[_options.IdentityEmailHeader].ToString());
+                    if (userId is Guid emailUserId && email != null
+                        && context.RequestServices.GetService<IWorkspaceMemberStore>() is { } memberStore)
+                    {
+                        try
+                        {
+                            await memberStore.SyncEmailAndRedeemInvitesAsync(emailUserId, email, context.RequestAborted);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Falha ao sincronizar e-mail/convites do usuário {UserId}.", emailUserId);
+                        }
+                    }
                 }
             }
             // else / sem header / header vazio: identidade anônima. Nunca lança.
