@@ -52,6 +52,20 @@ namespace LayoutParserApi.Services.Database
             return (int)(await cmd.ExecuteScalarAsync(ct))! > 0;
         }
 
+        public async Task<WorkspaceUpdateOutcome> UpdateWorkspaceAsync(Guid workspaceId, string? name, bool promoteToTeam, CancellationToken ct)
+        {
+            using var c = await OpenAsync(ct);
+            using var cmd = new SqlCommand(
+                @"UPDATE dbo.tbLpFiscalWorkspace
+                  SET Name = COALESCE(@Name, Name),
+                      Kind = CASE WHEN @Promote = 1 THEN 'team' ELSE Kind END
+                  WHERE WorkspaceId = @Id;", c);
+            cmd.Parameters.AddWithValue("@Id", workspaceId);
+            cmd.Parameters.AddWithValue("@Name", (object?)name ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@Promote", promoteToTeam ? 1 : 0);
+            return await cmd.ExecuteNonQueryAsync(ct) > 0 ? WorkspaceUpdateOutcome.Ok : WorkspaceUpdateOutcome.NotFound;
+        }
+
         public async Task<IReadOnlyList<AdminUserInfo>> ListUsersAsync(int skip, int take, CancellationToken ct)
         {
             using var c = await OpenAsync(ct);

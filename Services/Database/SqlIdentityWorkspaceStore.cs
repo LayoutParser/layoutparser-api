@@ -236,11 +236,14 @@ namespace LayoutParserApi.Services.Database
 
         private static async Task<WorkspaceSummary?> SelectPersonalWorkspaceAsync(SqlConnection connection, Guid userId, CancellationToken cancellationToken)
         {
+            // Pessoal primeiro; se o pessoal foi promovido a time (ou não existe), o mais antigo de que é
+            // dono — evita recriar um workspace pessoal novo e mantém o promovido como ativo.
             using var command = new SqlCommand(
-                @"SELECT w.WorkspaceId, w.Name, w.Kind, m.Role, w.CreatedAt
+                @"SELECT TOP (1) w.WorkspaceId, w.Name, w.Kind, m.Role, w.CreatedAt
                   FROM dbo.tbLpFiscalWorkspace w
                   JOIN dbo.tbLpWorkspaceMembership m ON m.WorkspaceId = w.WorkspaceId AND m.UserId = w.OwnerUserId
-                  WHERE w.OwnerUserId = @UserId AND w.Kind = @Kind;",
+                  WHERE w.OwnerUserId = @UserId
+                  ORDER BY CASE WHEN w.Kind = @Kind THEN 0 ELSE 1 END, w.CreatedAt;",
                 connection);
             command.Parameters.AddWithValue("@UserId", userId);
             command.Parameters.AddWithValue("@Kind", WorkspaceKind.Personal);

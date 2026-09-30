@@ -48,6 +48,8 @@ namespace LayoutParserApi.Controllers
                 return Ok(new
                 {
                     activeWorkspaceId = result.ActiveWorkspaceId,
+                    // Flag de super-administrador (decidido pela API a partir do e-mail verificado do BFF).
+                    isSudo = HttpContext is { } http && LayoutParserApi.Services.Security.SudoContext.IsSudo(http),
                     workspaces = result.Workspaces.Select(w => new
                     {
                         workspaceId = w.WorkspaceId,
