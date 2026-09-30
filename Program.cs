@@ -502,6 +502,12 @@ try
     // ConnectUS_Macgyver do Sysmiddle (reuso causava erro de FK em produção contra tbUser legada,
     // schema incompatível). Scoped por padrão do grupo Database.
     builder.Services.AddScoped<IIdentityWorkspaceStore, SqlIdentityWorkspaceStore>();
+    builder.Services.AddScoped<IWorkspaceMemberStore, SqlWorkspaceMemberStore>();
+    // E-mail (porta/adaptador): fase 1 = SMTP do Gmail via env Email__Smtp__* (senha de app, nunca no repo).
+    builder.Services.Configure<LayoutParserApi.Services.Email.EmailOptions>(builder.Configuration.GetSection("Email"));
+    builder.Services.AddSingleton<LayoutParserApi.Services.Email.IEmailSender, LayoutParserApi.Services.Email.SmtpEmailSender>();
+    builder.Services.AddScoped<LayoutParserApi.Services.Email.IEmailOutboxStore, SqlEmailOutboxStore>();
+    builder.Services.AddHostedService<LayoutParserApi.Services.Email.EmailOutboxWorker>();
     // Histórico de longo prazo do pathway de IA por usuário (issue #102) — mesmo banco IdentityDatabase.
     builder.Services.AddScoped<LayoutParserApi.Services.Database.SqlAiUserSessionStore>();
     // ✅ Issue #97 (gap de TTL/retenção): sem isso, tbLpAiUserSessionHistoryEntry crescia

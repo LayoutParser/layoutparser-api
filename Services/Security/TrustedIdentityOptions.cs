@@ -58,5 +58,12 @@ namespace LayoutParserApi.Services.Security
 
         /// <summary>Header com o <c>tid</c>/issuer do provedor, quando disponível.</summary>
         public string IdentityTenantHeader { get; set; } = "x-layoutparser-identity-tenant";
+
+        /// <summary>
+        /// Header com o e-mail VERIFICADO do usuário (o BFF só o envia com <c>email_verified=true</c>).
+        /// Persistido normalizado em minúsculas; convites pendentes para esse e-mail viram membership.
+        /// Confiança = mesma guarda de loopback/rede confiável dos demais headers de identidade.
+        /// </summary>
+        public string IdentityEmailHeader { get; set; } = "x-layoutparser-identity-email";
     }
 }

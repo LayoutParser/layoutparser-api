@@ -295,6 +295,41 @@ CREATE TABLE dbo.tbLpWorkspaceMembership (
     Role NVARCHAR(32) NOT NULL,
     CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     CONSTRAINT UQ_tbLpWorkspaceMembership UNIQUE (WorkspaceId, UserId)
+);
+
+-- E-mail normalizado (minúsculas) do usuário — atributo de exibição/convite, NUNCA chave de identidade.
+IF COL_LENGTH('dbo.tbLpUser', 'Email') IS NULL
+    ALTER TABLE dbo.tbLpUser ADD Email NVARCHAR(320) NULL;
+
+-- Índice via EXEC: a coluna acima acabou de ser criada neste mesmo batch (compilação diferida).
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_tbLpUser_Email' AND object_id = OBJECT_ID('dbo.tbLpUser'))
+    EXEC('CREATE INDEX IX_tbLpUser_Email ON dbo.tbLpUser(Email) WHERE Email IS NOT NULL');
+
+IF OBJECT_ID('dbo.tbLpWorkspaceInvite', 'U') IS NULL
+CREATE TABLE dbo.tbLpWorkspaceInvite (
+    InviteId UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+    WorkspaceId UNIQUEIDENTIFIER NOT NULL REFERENCES dbo.tbLpFiscalWorkspace(WorkspaceId),
+    Email NVARCHAR(320) NOT NULL,
+    Role NVARCHAR(32) NOT NULL,
+    InvitedByUserId UNIQUEIDENTIFIER NOT NULL REFERENCES dbo.tbLpUser(UserId),
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT UQ_tbLpWorkspaceInvite UNIQUE (WorkspaceId, Email)
+);
+
+IF OBJECT_ID('dbo.tbLpEmailOutbox', 'U') IS NULL
+CREATE TABLE dbo.tbLpEmailOutbox (
+    EmailId UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+    ToEmail NVARCHAR(320) NOT NULL,
+    Template NVARCHAR(64) NOT NULL,
+    DedupeKey NVARCHAR(128) NOT NULL,
+    Subject NVARCHAR(300) NOT NULL,
+    Body NVARCHAR(MAX) NOT NULL,
+    Status NVARCHAR(16) NOT NULL,
+    Attempts INT NOT NULL DEFAULT 0,
+    NextAttemptAt DATETIME2 NOT NULL,
+    LastError NVARCHAR(500) NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    SentAt DATETIME2 NULL
 );";
 
         internal static async Task EnsureSchemaAsync(SqlConnection connection, CancellationToken cancellationToken)
