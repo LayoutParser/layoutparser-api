@@ -10,7 +10,7 @@ namespace LayoutParserApi.Controllers
 {
     /// <summary>
     /// <c>GET .../mappings/{mapperGuid}/studio-model?engine=sysmiddle</c> — modelo único do Mapping Studio
-    /// (somente leitura: adaptadores Sysmiddle e TCL). Ver <c>docs/architecture/studio-model-design.md</c>.
+    /// (somente leitura: adaptadores Sysmiddle, TCL e XSLT). Ver <c>docs/architecture/studio-model-design.md</c>.
     /// Rota de LEITURA: não aplica <see cref="MappingEngineGuardFilter"/> nem auditoria (mesma justificativa do
     /// <see cref="LayoutTreeController"/>, que permanece intacto).
     /// </summary>
@@ -30,18 +30,18 @@ namespace LayoutParserApi.Controllers
         /// <summary>
         /// Devolve árvores de entrada/destino, vínculos, regras e diagnósticos. 404: sem identidade/não-membro
         /// (<see cref="RequireWorkspaceRoleFilter"/>) ou mapper inexistente; 400: <c>engine</c> inválido;
-        /// 501: engine sem adaptador (xslt); 503: catálogo indisponível; 304: <c>If-None-Match</c> casa o eTag.
+        /// 501: engine conhecido sem adaptador registrado; 503: catálogo indisponível; 304: <c>If-None-Match</c> casa o eTag.
         /// Headers: <c>ETag</c> e <c>Cache-Control: private, no-cache</c>.
         /// </summary>
         /// <param name="workspaceId">GUID do workspace (rota).</param>
         /// <param name="mapperGuid">Identificador do mapper no catálogo (rota).</param>
-        /// <param name="engine">Engine do artefato: <c>sysmiddle</c> ou <c>tcl</c> (só árvore de entrada); <c>xslt</c> retorna 501.</param>
+        /// <param name="engine">Engine do artefato: <c>sysmiddle</c>, <c>tcl</c> (só árvore de entrada) ou <c>xslt</c> (destino + links/rules do XSLT, somente leitura).</param>
         /// <param name="cancellationToken">Token de cancelamento da requisição.</param>
         /// <response code="200">Modelo montado (<see cref="LayoutParserApi.Models.Dtos.StudioModel.StudioModelDocument"/>).</response>
         /// <response code="304"><c>If-None-Match</c> casa o ETag atual.</response>
         /// <response code="400"><c>engine</c> inválido.</response>
         /// <response code="404">Sem identidade/não-membro ou mapper inexistente.</response>
-        /// <response code="501">Engine válido sem adaptador (xslt).</response>
+        /// <response code="501">Engine válido sem adaptador registrado.</response>
         /// <response code="503">Catálogo de mappers indisponível.</response>
         [HttpGet("studio-model")]
         [RequireWorkspaceRole(WorkspaceRole.Owner, WorkspaceRole.FiscalAdmin, WorkspaceRole.Mapper, WorkspaceRole.Reviewer, WorkspaceRole.Operator, WorkspaceRole.Viewer)]

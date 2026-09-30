@@ -5,7 +5,7 @@ namespace LayoutParserApi.Services.StudioModel
 {
     /// <summary>
     /// Escolhe o <see cref="IStudioModelAdapter"/> por <c>Engine</c> (case-insensitive). Default sem engine: <c>sysmiddle</c>.
-    /// Engine conhecido sem adaptador (xslt) → 501; desconhecido → 400.
+    /// Engine conhecido sem adaptador registrado → 501; desconhecido → 400.
     /// </summary>
     public sealed class StudioModelService : IStudioModelService
     {
