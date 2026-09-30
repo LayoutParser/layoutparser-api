@@ -10,7 +10,8 @@ namespace LayoutParserApi.Tests.Security
     /// </summary>
     public class SafePathResolverTests
     {
-        private const string Base = @"C:\app\base";
+        // Neutro de plataforma: em Linux "C:\app\base" seria um caminho RELATIVO e IsInsideBase daria falso.
+        private static readonly string Base = Path.Combine(Path.GetTempPath(), "app", "base");
 
         [Theory]
         [InlineData("layout.xml")]
@@ -64,10 +65,11 @@ namespace LayoutParserApi.Tests.Security
         [Fact]
         public void IsInsideBase_aceita_dentro_recusa_fora()
         {
-            Assert.True(SafePathResolver.IsInsideBase(Base, @"C:\app\base\sub\f.txt"));
-            Assert.False(SafePathResolver.IsInsideBase(Base, @"C:\app\other\f.txt"));
+            var raiz = Path.GetTempPath();
+            Assert.True(SafePathResolver.IsInsideBase(Base, Path.Combine(Base, "sub", "f.txt")));
+            Assert.False(SafePathResolver.IsInsideBase(Base, Path.Combine(raiz, "app", "other", "f.txt")));
             // Prefixo de nome NÃO conta como contido: "base_evil" não está dentro de "base".
-            Assert.False(SafePathResolver.IsInsideBase(Base, @"C:\app\base_evil\f.txt"));
+            Assert.False(SafePathResolver.IsInsideBase(Base, Path.Combine(raiz, "app", "base_evil", "f.txt")));
         }
     }
 }

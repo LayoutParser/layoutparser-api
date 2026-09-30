@@ -325,7 +325,9 @@ namespace LayoutParserApi.Services.Fiscal
 
         private static string SanitizeFileName(string originalFileName)
         {
-            var name = Path.GetFileName(originalFileName ?? string.Empty); // remove componente de diretório/traversal.
+            // Normaliza '\' para '/': em Linux Path.GetFileName NÃO trata a barra invertida como separador, então um nome
+            // enviado por cliente Windows ("..\..\evil.txt") manteria o traversal no nome. Vale nas duas plataformas.
+            var name = Path.GetFileName((originalFileName ?? string.Empty).Replace('\\', '/')); // remove componente de diretório/traversal.
             var extension = Path.GetExtension(name);
             var baseName = Path.GetFileNameWithoutExtension(name);
             var safeBase = InvalidFileNameChars.Replace(baseName, "_");
