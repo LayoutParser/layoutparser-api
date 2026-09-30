@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-16"?>
+<!-- SINTETICO. NAO OBSERVADO em arquivo real: forma derivada SO dos atributos de serializacao
+     (XmlLayoutVO, GroupTagElementVO, TagElementVO, AttributeElementVO). Ordem exata dos elementos NAO CONFIRMADA.
+     Atencao: TagElementVO serializa filhos como <Elements><Elements>..., diferente de <Elements><Element>. -->
+<LayoutVO xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="XmlLayoutVO">
+ <LayoutGuid>LAY_00000000-0000-0000-0000-00000000a002</LayoutGuid>
+ <LayoutType>Xml</LayoutType>
+ <Name>LAY_EXEMPLO_XML_PEDIDO</Name>
+ <Description />
+ <LimitOfCaracters>0</LimitOfCaracters>
+ <Elements>
+  <Element xsi:type="GroupTagElementVO">
+   <ElementGuid>GRT_00000000-0000-0000-0000-00000000e001</ElementGuid>
+   <Description /><Sequence>1</Sequence><Name>pedido</Name><IsRequired>true</IsRequired>
+   <Elements>
+    <Element xsi:type="TagElementVO">
+     <ElementGuid>TAG_00000000-0000-0000-0000-00000000f001</ElementGuid>
+     <Description /><Sequence>1</Sequence><Name>numero</Name><IsRequired>true</IsRequired>
+     <StartValue>1</StartValue><IncrementValue>1</IncrementValue><LengthField>0</LengthField>
+     <AlignmentType>Left</AlignmentType><IsStaticValue>false</IsStaticValue>
+     <IsCaseSensitiveValue>false</IsCaseSensitiveValue><IsSequential>false</IsSequential>
+     <RemoveWhiteSpaceType>All</RemoveWhiteSpaceType>
+     <DataTypeGuid>DAT_00000000-0000-0000-0000-00000000d001</DataTypeGuid>
+     <IsUseCData>false</IsUseCData><IsContainsAttribute>false</IsContainsAttribute>
+     <MinimalOccurrence>1</MinimalOccurrence><MaximumOccurrence>1</MaximumOccurrence>
+    </Element>
+    <Element xsi:type="GroupTagElementVO">
+     <ElementGuid>GRT_00000000-0000-0000-0000-00000000e002</ElementGuid>
+     <Description /><Sequence>2</Sequence><Name>item</Name><IsRequired>false</IsRequired>
+     <Elements>
+      <Element xsi:type="TagElementVO">
+       <ElementGuid>TAG_00000000-0000-0000-0000-00000000f002</ElementGuid>
+       <Description /><Sequence>1</Sequence><Name>produto</Name><IsRequired>true</IsRequired>
+       <LengthField>0</LengthField><AlignmentType>Left</AlignmentType><IsStaticValue>false</IsStaticValue>
+       <RemoveWhiteSpaceType>All</RemoveWhiteSpaceType>
+       <IsUseCData>false</IsUseCData><IsContainsAttribute>false</IsContainsAttribute>
+       <MinimalOccurrence>1</MinimalOccurrence><MaximumOccurrence>1</MaximumOccurrence>
+      </Element>
+      <Element xsi:type="TagElementVO">
+       <ElementGuid>TAG_00000000-0000-0000-0000-00000000f003</ElementGuid>
+       <Description /><Sequence>2</Sequence><Name>qtd</Name><IsRequired>true</IsRequired>
+       <LengthField>0</LengthField><AlignmentType>Left</AlignmentType><IsStaticValue>false</IsStaticValue>
+       <RemoveWhiteSpaceType>All</RemoveWhiteSpaceType>
+       <IsUseCData>false</IsUseCData><IsContainsAttribute>false</IsContainsAttribute>
+       <MinimalOccurrence>1</MinimalOccurrence><MaximumOccurrence>1</MaximumOccurrence>
+      </Element>
+     </Elements>
+     <MinimalOccurrence>0</MinimalOccurrence><MaximumOccurrence>999</MaximumOccurrence>
+     <IsContainsAttribute>false</IsContainsAttribute><AcceptEmpty>false</AcceptEmpty><NotRealizeParser>false</NotRealizeParser>
+    </Element>
+   </Elements>
+   <MinimalOccurrence>1</MinimalOccurrence><MaximumOccurrence>1</MaximumOccurrence>
+   <IsContainsAttribute>false</IsContainsAttribute><AcceptEmpty>false</AcceptEmpty><NotRealizeParser>false</NotRealizeParser>
+  </Element>
+ </Elements>
+ <DeclarationXmlType>IsRequired</DeclarationXmlType>
+ <IgnoreAttributesNamespaces>false</IgnoreAttributesNamespaces>
+ <EncodingName>utf-8</EncodingName>
+ <UseXMLSchema>false</UseXMLSchema>
+ <MakeErrorBySequence>false</MakeErrorBySequence>
+</LayoutVO>

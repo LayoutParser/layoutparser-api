@@ -1,0 +1,165 @@
+{
+  "schemaVersion": 1,
+  "artifact": {
+    "engine": "tcl",
+    "id": "MAP_00000000-0000-0000-0000-000000001001",
+    "rawHash": "sha256:56fa3d971af6cd737378648cd3290c2390b43d43fc93d9e7416981e90691028f",
+    "eTag": "\"fAmO3FWy2lb8FzV2lsIdmQ==\"",
+    "variantFields": [],
+    "sources": [
+      {
+        "role": "tcl",
+        "id": "MAP_00000000-0000-0000-0000-000000001001",
+        "rawHash": "sha256:56fa3d971af6cd737378648cd3290c2390b43d43fc93d9e7416981e90691028f"
+      }
+    ]
+  },
+  "capabilities": {
+    "edit": false,
+    "editableOps": []
+  },
+  "trees": {
+    "input": {
+      "layoutRef": "LAY_X",
+      "format": "text-positional",
+      "rootIds": [
+        "tcl:LINHA_CAB"
+      ],
+      "available": true
+    },
+    "target": {
+      "format": "unknown",
+      "rootIds": [],
+      "available": false
+    }
+  },
+  "nodes": {
+    "tcl:LINHA_CAB": {
+      "tree": "input",
+      "type": "line",
+      "name": "LINHA_CAB",
+      "path": "LINHA_CAB",
+      "order": 1,
+      "required": false,
+      "display": {
+        "text": "LINHA_CAB    (-)",
+        "icon": "line",
+        "linked": false
+      },
+      "props": {
+        "identifier": "CAB"
+      }
+    },
+    "tcl:LINHA_CAB/TipoRegistro": {
+      "tree": "input",
+      "type": "field",
+      "name": "TipoRegistro",
+      "path": "LINHA_CAB/TipoRegistro",
+      "parentId": "tcl:LINHA_CAB",
+      "order": 1,
+      "required": false,
+      "display": {
+        "text": "TipoRegistro    (-, ?)",
+        "icon": "field",
+        "linked": false
+      },
+      "props": {
+        "length": 3,
+        "offset": 0
+      }
+    },
+    "tcl:LINHA_CAB/NumeroPedido": {
+      "tree": "input",
+      "type": "field",
+      "name": "NumeroPedido",
+      "path": "LINHA_CAB/NumeroPedido",
+      "parentId": "tcl:LINHA_CAB",
+      "order": 2,
+      "required": false,
+      "display": {
+        "text": "NumeroPedido    (-, ?)",
+        "icon": "field",
+        "linked": false
+      },
+      "props": {
+        "length": 6,
+        "offset": 3
+      }
+    },
+    "tcl:LINHA_CAB/LINHA_ITEM": {
+      "tree": "input",
+      "type": "line",
+      "name": "LINHA_ITEM",
+      "path": "LINHA_CAB/LINHA_ITEM",
+      "parentId": "tcl:LINHA_CAB",
+      "order": 3,
+      "required": false,
+      "display": {
+        "text": "LINHA_ITEM    (-)",
+        "icon": "line",
+        "linked": false
+      },
+      "props": {
+        "identifier": "ITE"
+      }
+    },
+    "tcl:LINHA_CAB/LINHA_ITEM/TipoRegistro": {
+      "tree": "input",
+      "type": "field",
+      "name": "TipoRegistro",
+      "path": "LINHA_CAB/LINHA_ITEM/TipoRegistro",
+      "parentId": "tcl:LINHA_CAB/LINHA_ITEM",
+      "order": 1,
+      "required": false,
+      "display": {
+        "text": "TipoRegistro    (-, ?)",
+        "icon": "field",
+        "linked": false
+      },
+      "props": {
+        "length": 3,
+        "offset": 0
+      }
+    },
+    "tcl:LINHA_CAB/LINHA_ITEM/CodigoProduto": {
+      "tree": "input",
+      "type": "field",
+      "name": "CodigoProduto",
+      "path": "LINHA_CAB/LINHA_ITEM/CodigoProduto",
+      "parentId": "tcl:LINHA_CAB/LINHA_ITEM",
+      "order": 2,
+      "required": false,
+      "display": {
+        "text": "CodigoProduto    (-, ?)",
+        "icon": "field",
+        "linked": false
+      },
+      "props": {
+        "length": 5,
+        "offset": 3
+      }
+    },
+    "tcl:LINHA_CAB/LINHA_ITEM/Quantidade": {
+      "tree": "input",
+      "type": "field",
+      "name": "Quantidade",
+      "path": "LINHA_CAB/LINHA_ITEM/Quantidade",
+      "parentId": "tcl:LINHA_CAB/LINHA_ITEM",
+      "order": 3,
+      "required": false,
+      "display": {
+        "text": "Quantidade    (-, ?)",
+        "icon": "field",
+        "linked": false
+      },
+      "props": {
+        "length": 4,
+        "offset": 8
+      }
+    }
+  },
+  "links": {},
+  "rules": {},
+  "datatypes": {},
+  "diagnostics": []
+}

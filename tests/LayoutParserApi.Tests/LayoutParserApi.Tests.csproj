@@ -84,6 +84,7 @@
          domínio fiscal público (tabela CST), sem nomes de cliente. O arquivo real não entra no
          repo por conter nomes de cliente em outra aba (ver FiscalMappingRuleExtractorTests). -->
     <None Include="Fixtures\Fiscal\*.xlsx" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures\StudioModel\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-16"?>
+<!-- SINTETICO. Forma derivada de 57 layouts reais (TextLayoutVO) + atributos de serializacao de SysMiddle.Base 4.5.0.3. -->
+<LayoutVO xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="TextLayoutVO">
+ <LayoutGuid>LAY_00000000-0000-0000-0000-00000000a001</LayoutGuid>
+ <LayoutType>TextPositional</LayoutType>
+ <Name>LAY_EXEMPLO_TXT_PEDIDO</Name>
+ <Description />
+ <LimitOfCaracters>0</LimitOfCaracters>
+ <Elements>
+  <Element xsi:type="LineElementVO">
+   <ElementGuid>LIN_00000000-0000-0000-0000-00000000b001</ElementGuid>
+   <Description /><Sequence>1</Sequence><Name>LINHA_CAB</Name><IsRequired>true</IsRequired>
+   <Elements>
+    <Element xsi:type="FieldElementVO">
+     <ElementGuid>FLD_00000000-0000-0000-0000-00000000c001</ElementGuid>
+     <Description /><Sequence>1</Sequence><Name>TipoRegistro</Name><IsRequired>true</IsRequired>
+     <StartValue>1</StartValue><IncrementValue>1</IncrementValue><LengthField>3</LengthField>
+     <AlignmentType>Left</AlignmentType><IsStaticValue>true</IsStaticValue><StaticValue>CAB</StaticValue>
+     <IsCaseSensitiveValue>false</IsCaseSensitiveValue><IsSequential>false</IsSequential>
+     <RemoveWhiteSpaceType>All</RemoveWhiteSpaceType>
+     <DataTypeGuid>DAT_00000000-0000-0000-0000-00000000d001</DataTypeGuid>
+    </Element>
+    <Element xsi:type="FieldElementVO">
+     <ElementGuid>FLD_00000000-0000-0000-0000-00000000c002</ElementGuid>
+     <Description /><Sequence>2</Sequence><Name>NumeroPedido</Name><IsRequired>true</IsRequired>
+     <StartValue>1</StartValue><IncrementValue>1</IncrementValue><LengthField>6</LengthField>
+     <AlignmentType>Left</AlignmentType><IsStaticValue>false</IsStaticValue>
+     <IsCaseSensitiveValue>false</IsCaseSensitiveValue><IsSequential>false</IsSequential>
+     <RemoveWhiteSpaceType>All</RemoveWhiteSpaceType>
+     <DataTypeGuid>DAT_00000000-0000-0000-0000-00000000d001</DataTypeGuid>
+    </Element>
+    <!-- Linha filha: hierarquia = aninhamento XML. Sequence continua apos os campos irmaos. -->
+    <Element xsi:type="LineElementVO">
+     <ElementGuid>LIN_00000000-0000-0000-0000-00000000b002</ElementGuid>
+     <Description /><Sequence>3</Sequence><Name>LINHA_ITEM</Name><IsRequired>false</IsRequired>
+     <Elements>
+      <Element xsi:type="FieldElementVO">
+       <ElementGuid>FLD_00000000-0000-0000-0000-00000000c003</ElementGuid>
+       <Description /><Sequence>1</Sequence><Name>TipoRegistro</Name><IsRequired>true</IsRequired>
+       <StartValue>1</StartValue><IncrementValue>1</IncrementValue><LengthField>3</LengthField>
+       <AlignmentType>Left</AlignmentType><IsStaticValue>true</IsStaticValue><StaticValue>ITE</StaticValue>
+       <IsCaseSensitiveValue>false</IsCaseSensitiveValue><IsSequential>false</IsSequential>
+       <RemoveWhiteSpaceType>All</RemoveWhiteSpaceType>
+       <DataTypeGuid>DAT_00000000-0000-0000-0000-00000000d001</DataTypeGuid>
+      </Element>
+      <Element xsi:type="FieldElementVO">
+       <ElementGuid>FLD_00000000-0000-0000-0000-00000000c004</ElementGuid>
+       <Description /><Sequence>2</Sequence><Name>CodigoProduto</Name><IsRequired>true</IsRequired>
+       <StartValue>1</StartValue><IncrementValue>1</IncrementValue><LengthField>5</LengthField>
+       <AlignmentType>Left</AlignmentType><IsStaticValue>false</IsStaticValue>
+       <IsCaseSensitiveValue>false</IsCaseSensitiveValue><IsSequential>false</IsSequential>
+       <RemoveWhiteSpaceType>All</RemoveWhiteSpaceType>
+       <DataTypeGuid>DAT_00000000-0000-0000-0000-00000000d001</DataTypeGuid>
+      </Element>
+      <Element xsi:type="FieldElementVO">
+       <ElementGuid>FLD_00000000-0000-0000-0000-00000000c005</ElementGuid>
+       <Description /><Sequence>3</Sequence><Name>Quantidade</Name><IsRequired>true</IsRequired>
+       <StartValue>1</StartValue><IncrementValue>1</IncrementValue><LengthField>4</LengthField>
+       <AlignmentType>Right</AlignmentType><IsStaticValue>false</IsStaticValue>
+       <IsCaseSensitiveValue>false</IsCaseSensitiveValue><IsSequential>false</IsSequential>
+       <RemoveWhiteSpaceType>All</RemoveWhiteSpaceType>
+       <DataTypeGuid>DAT_00000000-0000-0000-0000-00000000d001</DataTypeGuid>
+      </Element>
+     </Elements>
+     <MinimalOccurrence>1</MinimalOccurrence><MaximumOccurrence>999</MaximumOccurrence>
+     <InitialValue>ITE</InitialValue>
+     <IsToValidateLengthCharacters>false</IsToValidateLengthCharacters>
+     <IsToValidateFieldLesserLength>true</IsToValidateFieldLesserLength>
+     <IsPositionalGroupRepetition>false</IsPositionalGroupRepetition>
+     <NotRealizeParser>false</NotRealizeParser>
+    </Element>
+   </Elements>
+   <MinimalOccurrence>1</MinimalOccurrence><MaximumOccurrence>1</MaximumOccurrence>
+   <InitialValue>CAB</InitialValue>
+   <IsToValidateLengthCharacters>false</IsToValidateLengthCharacters>
+   <IsToValidateFieldLesserLength>true</IsToValidateFieldLesserLength>
+   <IsPositionalGroupRepetition>false</IsPositionalGroupRepetition>
+   <NotRealizeParser>false</NotRealizeParser>
+  </Element>
+ </Elements>
+ <Delimiter>0</Delimiter>
+ <Escape xsi:nil="true" />
+ <InitializerLine />
+ <FinisherLine />
+ <WithBreakLines>true</WithBreakLines>
+</LayoutVO>

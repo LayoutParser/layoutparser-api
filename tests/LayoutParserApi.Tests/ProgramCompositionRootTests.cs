@@ -90,6 +90,16 @@ namespace LayoutParserApi.Tests
 
         // --- Grupos de DI cobertos além de Generation (issue #90 pede 2-3 grupos) ---
 
+        /// <summary>Studio-model: o serviço precisa enxergar o adaptador Sysmiddle registrado em Program.cs.</summary>
+        [Fact]
+        public void Studio_model_resolve_o_adaptador_sysmiddle()
+        {
+            using var scope = _factory.Services.CreateScope();
+            var adapters = scope.ServiceProvider.GetServices<LayoutParserApi.Services.StudioModel.IStudioModelAdapter>().ToList();
+            Assert.Contains(adapters, a => a.Engine == "sysmiddle");
+            Assert.Contains(adapters, a => a.Engine == "tcl");
+        }
+
         [Theory]
         // Cache
         [InlineData(typeof(ILayoutCacheService))]
@@ -112,6 +122,8 @@ namespace LayoutParserApi.Tests
         [InlineData(typeof(ILayoutParserService))]
         // Mapper Cache
         [InlineData(typeof(ICachedMapperService))]
+        // Studio-model (Fase 1)
+        [InlineData(typeof(IStudioModelService))]
         // Learning
         [InlineData(typeof(ExampleLearningService))]
         [InlineData(typeof(LayoutLearningService))]

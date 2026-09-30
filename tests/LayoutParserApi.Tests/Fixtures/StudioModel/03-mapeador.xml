@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-16"?>
+<!-- SINTETICO. Forma confirmada em 638 mapeadores reais (contagem estrutural, sem valores).
+     Atencao a nomenclatura enganosa do produto: dentro de LinkMappingItem, <InputLayoutGuid>/<TargetLayoutGuid>
+     guardam o ElementGuid (FLD_/LIN_/TAG_/GRT_/ATT_...) da ORIGEM/DESTINO, nao o GUID do layout. -->
+<MapperVO xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+ <MapperGuid>MAP_00000000-0000-0000-0000-000000001001</MapperGuid>
+ <Name>MAP_EXEMPLO_TXT_XML_PEDIDO</Name>
+ <Description />
+ <InputLayoutGuid>LAY_00000000-0000-0000-0000-00000000a001</InputLayoutGuid>
+ <TargetLayoutGuid>LAY_00000000-0000-0000-0000-00000000a002</TargetLayoutGuid>
+ <Rules>
+  <!-- Regra ancorada no no de destino por GUID (TargetElementGuid). Name = "Rule_" + Name do destino.
+       I./T. = caminho por NOME a partir do 1o elemento do layout (separador "/"); #. variavel local; $. global.
+       Confirmado nos dados reais: I. 3909/3948 e T. 2275/2284 resolvem como caminho por nome. -->
+  <Rule>
+   <ElementGuid>RUL_00000000-0000-0000-0000-000000002001</ElementGuid>
+   <Description /><Sequence>1</Sequence><Name>Rule_qtd</Name><IsRequired>false</IsRequired>
+   <ContentValue>#.qtd = I.LINHA_CAB/LINHA_ITEM/Quantidade;
+if (#.qtd == "0000") begin
+  T.pedido/item/qtd = "1";
+end
+else begin
+  T.pedido/item/qtd = RemoveZerosLeft(#.qtd);
+end</ContentValue>
+   <CreateOnlyChildren>false</CreateOnlyChildren>
+   <IsPrePosRule>false</IsPrePosRule>
+   <TargetElementGuid>TAG_00000000-0000-0000-0000-00000000f003</TargetElementGuid>
+  </Rule>
+ </Rules>
+ <IsNotExecuteTargetParser>false</IsNotExecuteTargetParser>
+ <LinkMappings>
+  <!-- Ligacao: Name = NomeOrigem + "_" + NomeDestino. ElementGuid com prefixo LKM_. -->
+  <LinkMappingItem>
+   <ElementGuid>LKM_00000000-0000-0000-0000-000000003001</ElementGuid>
+   <Description /><Sequence>1</Sequence><Name>NumeroPedido_numero</Name><IsRequired>false</IsRequired>
+   <InputLayoutGuid>FLD_00000000-0000-0000-0000-00000000c002</InputLayoutGuid>
+   <TargetLayoutGuid>TAG_00000000-0000-0000-0000-00000000f001</TargetLayoutGuid>
+   <IsToTruncateValue>false</IsToTruncateValue>
+   <RemoveWhiteSpaceType>All</RemoveWhiteSpaceType>
+   <DefaultValue />
+   <NotCreateGroupTagOnlyChilds>false</NotCreateGroupTagOnlyChilds>
+   <AllowEmpty>false</AllowEmpty>
+  </LinkMappingItem>
+  <!-- Ligacao de GRUPO: linha repetida -> grupo repetido (LIN->GRT: 888 casos reais) = contexto de iteracao. -->
+  <LinkMappingItem>
+   <ElementGuid>LKM_00000000-0000-0000-0000-000000003002</ElementGuid>
+   <Description /><Sequence>2</Sequence><Name>LINHA_ITEM_item</Name><IsRequired>false</IsRequired>
+   <InputLayoutGuid>LIN_00000000-0000-0000-0000-00000000b002</InputLayoutGuid>
+   <TargetLayoutGuid>GRT_00000000-0000-0000-0000-00000000e002</TargetLayoutGuid>
+   <IsToTruncateValue>false</IsToTruncateValue>
+   <RemoveWhiteSpaceType>Nothing</RemoveWhiteSpaceType>
+   <DefaultValue />
+   <NotCreateGroupTagOnlyChilds>false</NotCreateGroupTagOnlyChilds>
+   <AllowEmpty>false</AllowEmpty>
+  </LinkMappingItem>
+  <LinkMappingItem>
+   <ElementGuid>LKM_00000000-0000-0000-0000-000000003003</ElementGuid>
+   <Description /><Sequence>3</Sequence><Name>CodigoProduto_produto</Name><IsRequired>false</IsRequired>
+   <InputLayoutGuid>FLD_00000000-0000-0000-0000-00000000c004</InputLayoutGuid>
+   <TargetLayoutGuid>TAG_00000000-0000-0000-0000-00000000f002</TargetLayoutGuid>
+   <IsToTruncateValue>false</IsToTruncateValue>
+   <RemoveWhiteSpaceType>All</RemoveWhiteSpaceType>
+   <DefaultValue>SEM-COD</DefaultValue>
+   <NotCreateGroupTagOnlyChilds>false</NotCreateGroupTagOnlyChilds>
+   <AllowEmpty>false</AllowEmpty>
+  </LinkMappingItem>
+ </LinkMappings>
+</MapperVO>
