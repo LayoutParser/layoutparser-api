@@ -151,6 +151,34 @@ namespace LayoutParserApi.Services.XmlAnalysis
             return lines;
         }
 
+        private static bool IsXsiType(XElement e, string type)
+            => e.Attribute(XName.Get("type", "http://www.w3.org/2001/XMLSchema-instance"))?.Value == type;
+
+        /// <summary>
+        /// Filhos DIRETOS de uma linha (Elements/Element), tolerando o quirk &lt;Elements&gt;&lt;Elements&gt;.
+        /// Não desce para as linhas filhas aninhadas.
+        /// </summary>
+        private static IEnumerable<XElement> GetDirectChildElements(XElement lineElement)
+        {
+            foreach (var container in lineElement.Elements("Elements"))
+                foreach (var child in FlattenContainer(container, 0))
+                    yield return child;
+        }
+
+        private static IEnumerable<XElement> FlattenContainer(XElement container, int depth)
+        {
+            foreach (var child in container.Elements())
+            {
+                if (child.Name.LocalName == "Elements" && depth < 8)
+                {
+                    foreach (var inner in FlattenContainer(child, depth + 1))
+                        yield return inner;
+                }
+                else
+                    yield return child;
+            }
+        }
+
         /// <summary>
         /// Extrai campos de uma linha
         /// </summary>
@@ -158,14 +186,14 @@ namespace LayoutParserApi.Services.XmlAnalysis
         {
             var fields = new List<FieldInfo>();
 
-            // Procurar campos filhos (FieldElementVO)
-            var fieldElements = lineElement.Descendants()
-                .Where(e => e.Attribute(XName.Get("type", "http://www.w3.org/2001/XMLSchema-instance"))?.Value == "FieldElementVO").ToList();
+            // Procurar campos DIRETOS da linha (FieldElementVO); linhas filhas aninhadas têm seus próprios campos
+            var fieldElements = GetDirectChildElements(lineElement)
+                .Where(e => IsXsiType(e, "FieldElementVO")).ToList();
 
             // Se não encontrou, procurar elementos filhos diretos
             if (!fieldElements.Any())
             {
-                fieldElements = lineElement.Elements().Where(e => e.Name.LocalName == "Element" || e.Name.LocalName == "FieldElement").ToList();
+                fieldElements = lineElement.Elements().Where(e => (e.Name.LocalName == "Element" || e.Name.LocalName == "FieldElement") && !IsXsiType(e, "LineElementVO")).ToList();
             }
 
             int currentPosition = 1; // Posição acumulativa
@@ -263,8 +291,8 @@ namespace LayoutParserApi.Services.XmlAnalysis
         /// </summary>
         private string GetLineName(XElement element)
         {
-            var nameElem = element.Descendants().FirstOrDefault(e => e.Name.LocalName == "Name")
-                          ?? element.Element("Name");
+            var nameElem = element.Element("Name")
+                          ?? element.Descendants().FirstOrDefault(e => e.Name.LocalName == "Name");
             if (nameElem != null)
                 return nameElem.Value;
 
@@ -345,22 +373,26 @@ namespace LayoutParserApi.Services.XmlAnalysis
 
             try
             {
-                // Procurar linhas que têm ParentElement apontando para esta linha
-                var allLines = layoutDoc.Descendants()
-                    .Where(e => e.Attribute(XName.Get("type", "http://www.w3.org/2001/XMLSchema-instance"))?.Value == "LineElementVO").ToList();
+                var allLines = layoutDoc.Descendants().Where(e => IsXsiType(e, "LineElementVO")).ToList();
 
+                // 1) Aninhamento XML: LineElementVO filho direto do Elements da própria linha
+                foreach (var line in allLines.Where(l => GetLineName(l) == lineName))
+                    foreach (var child in GetDirectChildElements(line).Where(e => IsXsiType(e, "LineElementVO")))
+                    {
+                        var childName = GetLineName(child);
+                        if (!string.IsNullOrEmpty(childName) && childName != lineName)
+                            children.Add(childName);
+                    }
+
+                // 2) Fallback: ParentElement com comparação EXATA (não Contains: LINHA_1 != LINHA_10)
                 foreach (var line in allLines)
                 {
-                    var parentElem = line.Descendants().FirstOrDefault(e => e.Name.LocalName == "ParentElement");
-                    if (parentElem != null)
+                    var parentElem = line.Elements().FirstOrDefault(e => e.Name.LocalName == "ParentElement");
+                    if (parentElem != null && parentElem.Value.Trim() == lineName)
                     {
-                        var parentValue = parentElem.Value;
-                        if (parentValue.Contains(lineName))
-                        {
-                            var childName = GetLineName(line);
-                            if (!string.IsNullOrEmpty(childName) && childName != lineName)
-                                children.Add(childName);
-                        }
+                        var childName = GetLineName(line);
+                        if (!string.IsNullOrEmpty(childName) && childName != lineName)
+                            children.Add(childName);
                     }
                 }
             }

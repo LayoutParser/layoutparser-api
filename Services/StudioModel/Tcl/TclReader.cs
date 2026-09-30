@@ -97,12 +97,20 @@ namespace LayoutParserApi.Services.StudioModel.Tcl
             return result;
         }
 
+        private const int MaxDepth = 64;
+
         private static void EmitLine(
             LineDef line, string? parentId, string parentPath, int order,
             Dictionary<string, int> rootSiblingNames, HashSet<LineDef> stack, HashSet<LineDef> visited,
             Dictionary<string, LineDef> byName, TclReadResult result)
         {
             // Nomes de irmãos são controlados por quem chama: raiz usa rootSiblingNames; filhos usam mapa local.
+            if (stack.Count >= MaxDepth)
+            {
+                result.Diagnostics.Add(new StudioDiagnostic("TCL_MAX_DEPTH", "warning", $"Profundidade de CHILD acima de {MaxDepth}; subárvore ignorada.", Path: parentPath + "/" + line.Name));
+                visited.Add(line);
+                return;
+            }
             var id = UniqueId(parentId, line.Name, rootSiblingNames);
             var path = parentPath.Length == 0 ? line.Name : parentPath + "/" + line.Name;
             visited.Add(line);
