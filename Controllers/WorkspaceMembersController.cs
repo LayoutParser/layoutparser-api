@@ -1,9 +1,11 @@
 using LayoutParserApi.Models.Entities.Identity;
+using LayoutParserApi.Services.Email;
 using LayoutParserApi.Services.Filters;
 using LayoutParserApi.Services.Identity;
 using LayoutParserApi.Services.Interfaces;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace LayoutParserApi.Controllers
 {
@@ -34,14 +36,23 @@ namespace LayoutParserApi.Controllers
         private readonly IWorkspaceMemberStore _members;
         private readonly IIdentityWorkspaceService _workspaces;
         private readonly ICurrentUser _currentUser;
+        private readonly IEmailOutboxStore _outbox;
+        private readonly IEmailSender _emailSender;
+        private readonly EmailOptions _emailOptions;
         private readonly ILogger<WorkspaceMembersController> _logger;
 
         public WorkspaceMembersController(
             IWorkspaceMemberStore members,
             IIdentityWorkspaceService workspaces,
             ICurrentUser currentUser,
+            IEmailOutboxStore outbox,
+            IEmailSender emailSender,
+            IOptions<EmailOptions> emailOptions,
             ILogger<WorkspaceMembersController> logger)
         {
+            _outbox = outbox;
+            _emailSender = emailSender;
+            _emailOptions = emailOptions.Value;
             _members = members;
             _workspaces = workspaces;
             _currentUser = currentUser;
@@ -51,7 +62,7 @@ namespace LayoutParserApi.Controllers
         [HttpGet]
         public async Task<IActionResult> List(Guid workspaceId, CancellationToken cancellationToken)
         {
-            return await Guarded(workspaceId, cancellationToken, async () =>
+            return await Guarded(workspaceId, cancellationToken, async workspace =>
             {
                 var list = await _members.ListAsync(workspaceId, cancellationToken);
                 return Ok(list.Select(ToDto));
@@ -69,9 +80,11 @@ namespace LayoutParserApi.Controllers
             if (string.IsNullOrEmpty(role) || !AssignableRoles.Contains(role))
                 return BadRequest(new { error = "Papel inválido. Aceitos: fiscal_admin, mapper, reviewer, operator, viewer." });
 
-            return await Guarded(workspaceId, cancellationToken, async () =>
+            return await Guarded(workspaceId, cancellationToken, async workspace =>
             {
                 var result = await _members.AddAsync(workspaceId, email, role, _currentUser.UserId!.Value, cancellationToken);
+                if (result.Kind is AddMemberKind.Added or AddMemberKind.Invited)
+                    await TryEnqueueWelcomeAsync(workspace, email, cancellationToken);
                 return result.Kind switch
                 {
                     AddMemberKind.Added or AddMemberKind.Invited => StatusCode(StatusCodes.Status201Created, ToDto(result.Member)),
@@ -88,15 +101,32 @@ namespace LayoutParserApi.Controllers
             if (string.IsNullOrEmpty(role) || !AssignableRoles.Contains(role))
                 return BadRequest(new { error = "Papel inválido. Aceitos: fiscal_admin, mapper, reviewer, operator, viewer." });
 
-            return await Guarded(workspaceId, cancellationToken, async () =>
+            return await Guarded(workspaceId, cancellationToken, async workspace =>
                 Outcome(await _members.ChangeRoleAsync(workspaceId, userId, role, cancellationToken), noContentOnOk: true));
         }
 
         [HttpDelete("{userId:guid}")]
         public async Task<IActionResult> Remove(Guid workspaceId, Guid userId, CancellationToken cancellationToken)
         {
-            return await Guarded(workspaceId, cancellationToken, async () =>
+            return await Guarded(workspaceId, cancellationToken, async workspace =>
                 Outcome(await _members.RemoveAsync(workspaceId, userId, cancellationToken), noContentOnOk: true));
+        }
+
+        /// <summary>Boas-vindas best-effort: qualquer falha aqui NUNCA desfaz o vínculo já gravado.</summary>
+        private async Task TryEnqueueWelcomeAsync(WorkspaceSummary workspace, string email, CancellationToken cancellationToken)
+        {
+            if (!_emailSender.IsConfigured)
+                return;
+
+            try
+            {
+                var (subject, body) = WelcomeEmailTemplate.Render(workspace.Name, _emailOptions.PortalUrl);
+                await _outbox.EnqueueAsync(email, WelcomeEmailTemplate.Name, workspace.WorkspaceId.ToString("N"), subject, body, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Não foi possível enfileirar o e-mail de boas-vindas do workspace {WorkspaceId}.", workspace.WorkspaceId);
+            }
         }
 
         private IActionResult Outcome(MemberChangeOutcome outcome, bool noContentOnOk) => outcome switch
@@ -108,7 +138,7 @@ namespace LayoutParserApi.Controllers
         };
 
         /// <summary>Só workspace de time aceita membros; SQL fora do ar → 503 (fail-closed), nunca 500 opaco.</summary>
-        private async Task<IActionResult> Guarded(Guid workspaceId, CancellationToken cancellationToken, Func<Task<IActionResult>> action)
+        private async Task<IActionResult> Guarded(Guid workspaceId, CancellationToken cancellationToken, Func<WorkspaceSummary, Task<IActionResult>> action)
         {
             try
             {
@@ -119,7 +149,7 @@ namespace LayoutParserApi.Controllers
                 if (!string.Equals(workspace.Kind, WorkspaceKind.Team, StringComparison.Ordinal))
                     return Conflict(new { error = "Workspace pessoal não aceita membros." });
 
-                return await action();
+                return await action(workspace);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

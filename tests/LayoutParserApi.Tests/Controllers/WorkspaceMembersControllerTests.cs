@@ -1,5 +1,6 @@
 using LayoutParserApi.Controllers;
 using LayoutParserApi.Models.Entities.Identity;
+using LayoutParserApi.Services.Email;
 using LayoutParserApi.Services.Identity;
 using LayoutParserApi.Services.Interfaces;
 
@@ -70,8 +71,63 @@ namespace LayoutParserApi.Tests.Controllers
                 => Task.FromResult(Outcome);
         }
 
-        private static WorkspaceMembersController Create(FakeMembers members, FakeWorkspaces? workspaces = null)
-            => new(members, workspaces ?? new FakeWorkspaces(), new FakeCurrentUser(), NullLogger<WorkspaceMembersController>.Instance);
+        private sealed class FakeSender : IEmailSender
+        {
+            public bool Configured { get; set; }
+            public bool IsConfigured => Configured;
+            public Task SendAsync(EmailMessage message, CancellationToken cancellationToken) => Task.CompletedTask;
+        }
+
+        private sealed class FakeOutbox : IEmailOutboxStore
+        {
+            public List<(string To, string Subject, string Body)> Enqueued { get; } = new();
+            public bool Throw { get; set; }
+            public Task<bool> EnqueueAsync(string toEmail, string template, string dedupeKey, string subject, string body, CancellationToken cancellationToken)
+            {
+                if (Throw) throw new InvalidOperationException("sql fora");
+                Enqueued.Add((toEmail, subject, body));
+                return Task.FromResult(true);
+            }
+            public Task<OutboxEmail?> ClaimNextAsync(int maxAttempts, CancellationToken cancellationToken) => Task.FromResult<OutboxEmail?>(null);
+            public Task MarkSentAsync(Guid emailId, CancellationToken cancellationToken) => Task.CompletedTask;
+            public Task MarkFailedAsync(Guid emailId, string error, int maxAttempts, CancellationToken cancellationToken) => Task.CompletedTask;
+            public Task<int> CountSentLast24hAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+        }
+
+        [Fact]
+        public async Task Add_enfileira_boas_vindas_sem_segredo_quando_smtp_configurado()
+        {
+            var outbox = new FakeOutbox();
+            var result = await Create(new FakeMembers(), outbox: outbox, configured: true)
+                .Add(WorkspaceId, new AddWorkspaceMemberRequest("a@b.com", "viewer"), default);
+
+            Assert.Equal(201, Assert.IsType<ObjectResult>(result).StatusCode);
+            var mail = Assert.Single(outbox.Enqueued);
+            Assert.Equal("a@b.com", mail.To);
+            Assert.Contains("https://portal", mail.Body);
+            Assert.DoesNotContain("token", mail.Body, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public async Task Falha_do_outbox_nao_desfaz_o_vinculo()
+        {
+            var result = await Create(new FakeMembers(), outbox: new FakeOutbox { Throw = true }, configured: true)
+                .Add(WorkspaceId, new AddWorkspaceMemberRequest("a@b.com", "viewer"), default);
+            Assert.Equal(201, Assert.IsType<ObjectResult>(result).StatusCode);
+        }
+
+        [Fact]
+        public async Task Sem_smtp_configurado_nao_enfileira()
+        {
+            var outbox = new FakeOutbox();
+            await Create(new FakeMembers(), outbox: outbox, configured: false)
+                .Add(WorkspaceId, new AddWorkspaceMemberRequest("a@b.com", "viewer"), default);
+            Assert.Empty(outbox.Enqueued);
+        }
+
+        private static WorkspaceMembersController Create(FakeMembers members, FakeWorkspaces? workspaces = null, FakeOutbox? outbox = null, bool configured = false)
+            => new(members, workspaces ?? new FakeWorkspaces(), new FakeCurrentUser(), outbox ?? new FakeOutbox(), new FakeSender { Configured = configured },
+                Microsoft.Extensions.Options.Options.Create(new EmailOptions { PortalUrl = "https://portal" }), NullLogger<WorkspaceMembersController>.Instance);
 
         [Theory]
         [InlineData("  Fulano@Empresa.COM ", "fulano@empresa.com")]

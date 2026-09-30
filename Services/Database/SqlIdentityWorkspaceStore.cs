@@ -314,6 +314,22 @@ CREATE TABLE dbo.tbLpWorkspaceInvite (
     InvitedByUserId UNIQUEIDENTIFIER NOT NULL REFERENCES dbo.tbLpUser(UserId),
     CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     CONSTRAINT UQ_tbLpWorkspaceInvite UNIQUE (WorkspaceId, Email)
+);
+
+IF OBJECT_ID('dbo.tbLpEmailOutbox', 'U') IS NULL
+CREATE TABLE dbo.tbLpEmailOutbox (
+    EmailId UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+    ToEmail NVARCHAR(320) NOT NULL,
+    Template NVARCHAR(64) NOT NULL,
+    DedupeKey NVARCHAR(128) NOT NULL,
+    Subject NVARCHAR(300) NOT NULL,
+    Body NVARCHAR(MAX) NOT NULL,
+    Status NVARCHAR(16) NOT NULL,
+    Attempts INT NOT NULL DEFAULT 0,
+    NextAttemptAt DATETIME2 NOT NULL,
+    LastError NVARCHAR(500) NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    SentAt DATETIME2 NULL
 );";
 
         internal static async Task EnsureSchemaAsync(SqlConnection connection, CancellationToken cancellationToken)
