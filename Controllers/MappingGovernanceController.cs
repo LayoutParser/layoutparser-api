@@ -372,23 +372,23 @@ namespace LayoutParserApi.Controllers
             detailUrl = $"/api/workspaces/{workspaceId}/mappings/{Uri.EscapeDataString(item.MapperGuid)}/generated-transformation",
         };
 
-        private static object ToReleaseResponse(MappingReleaseDetail release) => new
+        private static MappingReleaseGovernanceResponse ToReleaseResponse(MappingReleaseDetail release) => new()
         {
-            origin = OriginDraftCompile,
-            releaseId = release.ReleaseId,
-            workspaceId = release.WorkspaceId,
-            draftId = release.DraftId,
-            engine = release.Engine,
-            status = release.Status,
-            environment = release.Environment,
-            approvedByUserId = release.ApprovedByUserId,
-            approvedAt = release.ApprovedAt,
-            approvalJustification = release.ApprovalJustification,
-            publishedByUserId = release.PublishedByUserId,
-            publishedAt = release.PublishedAt,
-            previousPublishedReleaseId = release.PreviousPublishedReleaseId,
-            correlationId = release.CorrelationId,
-            eTag = release.ETag,
+            Origin = OriginDraftCompile,
+            ReleaseId = release.ReleaseId,
+            WorkspaceId = release.WorkspaceId,
+            DraftId = release.DraftId,
+            Engine = release.Engine,
+            Status = release.Status,
+            Environment = release.Environment,
+            ApprovedByUserId = release.ApprovedByUserId,
+            ApprovedAt = release.ApprovedAt,
+            ApprovalJustification = release.ApprovalJustification,
+            PublishedByUserId = release.PublishedByUserId,
+            PublishedAt = release.PublishedAt,
+            PreviousPublishedReleaseId = release.PreviousPublishedReleaseId,
+            CorrelationId = release.CorrelationId,
+            ETag = release.ETag,
         };
     }
 }

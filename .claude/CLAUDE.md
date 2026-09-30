@@ -89,7 +89,9 @@ dotnet test             # quando houver testes (Services/Testing + projeto de te
 ## 6. Git & Commits
 
 - **Conventional Commits:** `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
-- Trabalhe em branch (`feat/*`, `fix/*`); **não** comite direto na `master` sem pedido.
+- **Fluxo (regra do dono, 2026-09-29):** desenvolva **sempre na `develop`** e abra as **PRs direto
+  para a `master`** (`develop → master`). Este ambiente É produção, então não há etapa intermediária.
+  **Não** comite direto na `master`.
 - **Push só por `@lp-devops`** e só quando o usuário pedir.
 
 ---

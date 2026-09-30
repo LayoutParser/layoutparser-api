@@ -289,7 +289,7 @@ namespace LayoutParserApi.Tests.Controllers
             var result = await controller.GetRelease(workspaceId, draftId, release.ReleaseId, CancellationToken.None);
 
             var ok = Assert.IsType<OkObjectResult>(result);
-            var requiredCoverage = ok.Value!.GetType().GetProperty("requiredCoverage")!.GetValue(ok.Value);
+            var requiredCoverage = ok.Value!.GetType().GetProperty("requiredCoverage", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(ok.Value);
             Assert.Null(requiredCoverage);
         }
 
@@ -321,10 +321,10 @@ namespace LayoutParserApi.Tests.Controllers
             var result = await controller.GetRelease(workspaceId, draftId, release.ReleaseId, CancellationToken.None);
 
             var ok = Assert.IsType<OkObjectResult>(result);
-            var requiredCoverage = ok.Value!.GetType().GetProperty("requiredCoverage")!.GetValue(ok.Value);
+            var requiredCoverage = ok.Value!.GetType().GetProperty("requiredCoverage", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(ok.Value);
             Assert.NotNull(requiredCoverage);
-            var percent = (double)requiredCoverage!.GetType().GetProperty("percent")!.GetValue(requiredCoverage)!;
-            var uncovered = (System.Collections.IEnumerable)requiredCoverage.GetType().GetProperty("uncovered")!.GetValue(requiredCoverage)!;
+            var percent = (double)requiredCoverage!.GetType().GetProperty("percent", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(requiredCoverage)!;
+            var uncovered = (System.Collections.IEnumerable)requiredCoverage.GetType().GetProperty("uncovered", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(requiredCoverage)!;
 
             // cUF coberto (TargetRefs da regra accepted), natOp obrigatório e não coberto → 50%.
             Assert.Equal(50, percent);
@@ -351,7 +351,7 @@ namespace LayoutParserApi.Tests.Controllers
             var result = await controller.GetRelease(workspaceId, draftId, release.ReleaseId, CancellationToken.None);
 
             var ok = Assert.IsType<OkObjectResult>(result);
-            var requiredCoverage = ok.Value!.GetType().GetProperty("requiredCoverage")!.GetValue(ok.Value);
+            var requiredCoverage = ok.Value!.GetType().GetProperty("requiredCoverage", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(ok.Value);
             Assert.Null(requiredCoverage); // sem arquivo XSD no BasePath — degrada, não lança.
         }
     }

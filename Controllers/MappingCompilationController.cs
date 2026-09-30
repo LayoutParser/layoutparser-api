@@ -379,45 +379,45 @@ namespace LayoutParserApi.Controllers
             });
         }
 
-        private async Task<object> ToReleaseResponseAsync(MappingReleaseDetail release, Guid userId, CancellationToken cancellationToken, string? eTagOverride = null)
+        private async Task<MappingReleaseResponse> ToReleaseResponseAsync(MappingReleaseDetail release, Guid userId, CancellationToken cancellationToken, string? eTagOverride = null)
         {
             var requiredCoverage = await ComputeRequiredCoverageAsync(release, userId, cancellationToken);
-            return new
+            return new MappingReleaseResponse
             {
-                releaseId = release.ReleaseId,
-                workspaceId = release.WorkspaceId,
-                draftId = release.DraftId,
-                engine = release.Engine,
-                artifacts = release.Artifacts,
-                sourceRuleIds = release.SourceRuleIds,
-                compileDiagnostics = release.CompileDiagnostics,
-                rulesSnapshotHash = release.RulesSnapshotHash,
-                testRunSummary = release.TestRunSummary,
+                ReleaseId = release.ReleaseId,
+                WorkspaceId = release.WorkspaceId,
+                DraftId = release.DraftId,
+                Engine = release.Engine,
+                Artifacts = release.Artifacts,
+                SourceRuleIds = release.SourceRuleIds,
+                CompileDiagnostics = release.CompileDiagnostics,
+                RulesSnapshotHash = release.RulesSnapshotHash,
+                TestRunSummary = release.TestRunSummary,
                 // Diff granular por regra (issue #367 / LayoutParserReact #228): mesma divergência de
                 // testRunSummary.divergences, agrupada por ruleId — evita o front ter que fazer
                 // divergences.filter(d => d.ruleId === x) no cliente. Não quebra o agregado existente.
-                divergencesByRuleId = release.TestRunSummary == null
+                DivergencesByRuleId = release.TestRunSummary == null
                     ? null
                     : MappingTestRunSummaryExtensions.GroupDivergencesByRule(release.TestRunSummary),
-                status = release.Status,
+                Status = release.Status,
                 // Issue #381 (ADR §2.2/§4): "compiled" (default) ou "manual_edit". rulesDesynced é
                 // derivado (não persistido) — o front desabilita o diff-por-regra e mostra o selo
                 // "editado manualmente" quando true.
-                artifactSource = release.ArtifactSource,
-                derivedFromReleaseId = release.DerivedFromReleaseId,
-                manualEditReason = release.ManualEditReason,
-                manuallyEditedArtifactKinds = release.ManuallyEditedArtifactKinds,
-                rulesDesynced = release.RulesDesynced,
-                correlationId = release.CorrelationId,
-                createdAt = release.CreatedAt,
-                eTag = eTagOverride ?? release.ETag,
+                ArtifactSource = release.ArtifactSource,
+                DerivedFromReleaseId = release.DerivedFromReleaseId,
+                ManualEditReason = release.ManualEditReason,
+                ManuallyEditedArtifactKinds = release.ManuallyEditedArtifactKinds,
+                RulesDesynced = release.RulesDesynced,
+                CorrelationId = release.CorrelationId,
+                CreatedAt = release.CreatedAt,
+                ETag = eTagOverride ?? release.ETag,
                 // Issue #379 (ADR §2.6): snapshot congelado do perfil fiscal da release + resolvedXsd
                 // recalculado a partir do snapshot (estável — documentType+schemaVersion congelados).
-                fiscalProfile = release.FiscalProfile == null ? null : ToFiscalProfileResponse(release.FiscalProfile, _fiscalProfileResolver),
+                FiscalProfile = release.FiscalProfile == null ? null : ToFiscalProfileResponse(release.FiscalProfile, _fiscalProfileResolver),
                 // Issue #380 (#198.5): cobertura estática de destinos obrigatórios do XSD alvo — null
                 // quando a release não tem FiscalProfile (sem XSD resolvido), mesma semântica de
                 // "perfil ausente" do #379.
-                requiredCoverage,
+                RequiredCoverage = requiredCoverage,
             };
         }
 
@@ -430,7 +430,7 @@ namespace LayoutParserApi.Controllers
         /// quando falta perfil fiscal, XSD não resolve, schema não carrega do disco, ou o elemento
         /// raiz não bate com o XSD configurado.
         /// </summary>
-        private async Task<object?> ComputeRequiredCoverageAsync(MappingReleaseDetail release, Guid userId, CancellationToken cancellationToken)
+        private async Task<RequiredCoverageResponse?> ComputeRequiredCoverageAsync(MappingReleaseDetail release, Guid userId, CancellationToken cancellationToken)
         {
             if (release.FiscalProfile == null)
                 return null;
@@ -457,16 +457,16 @@ namespace LayoutParserApi.Controllers
             if (result == null)
                 return null;
 
-            return new { percent = result.Percent, uncovered = result.Uncovered };
+            return new RequiredCoverageResponse { Percent = result.Percent, Uncovered = result.Uncovered };
         }
 
-        private static object ToFiscalProfileResponse(FiscalProfile profile, IFiscalProfileResolver fiscalProfileResolver) => new
+        private static FiscalProfileResponse ToFiscalProfileResponse(FiscalProfile profile, IFiscalProfileResolver fiscalProfileResolver) => new()
         {
-            documentType = profile.DocumentType,
-            schemaVersion = profile.SchemaVersion,
-            operation = profile.Operation,
-            jurisdiction = profile.Jurisdiction,
-            resolvedXsd = fiscalProfileResolver.Resolve(profile.DocumentType, profile.SchemaVersion),
+            DocumentType = profile.DocumentType,
+            SchemaVersion = profile.SchemaVersion,
+            Operation = profile.Operation,
+            Jurisdiction = profile.Jurisdiction,
+            ResolvedXsd = fiscalProfileResolver.Resolve(profile.DocumentType, profile.SchemaVersion),
         };
     }
 }

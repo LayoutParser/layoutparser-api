@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace LayoutParserApi.Models.Entities.Fiscal
 {
     /// <summary>
@@ -64,11 +66,13 @@ namespace LayoutParserApi.Models.Entities.Fiscal
     public sealed record MappingTestRunDivergence(
         string Kind,
         string XPath,
-        string? Expected,
-        string? Actual,
-        Guid? RuleId,
-        IReadOnlyList<string>? SourceRefs,
-        IReadOnlyList<MappingDraftRuleEvidence>? Evidence);
+        // Contrato nullable = sempre presente: o global usa WhenWritingNull, mas o front espera as
+        // chaves com valor null (não ausentes).
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Expected,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Actual,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] Guid? RuleId,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] IReadOnlyList<string>? SourceRefs,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] IReadOnlyList<MappingDraftRuleEvidence>? Evidence);
 
     /// <summary>Resumo do Fiscal Test Lab — <see cref="RequiredGatesPassed"/> é o contrato com o Slice 7 (design §2).</summary>
     public sealed record MappingTestRunSummary(
@@ -84,8 +88,8 @@ namespace LayoutParserApi.Models.Entities.Fiscal
         // (GET .../releases/diff) via CanonicalDiffer sem precisar reexecutar o XSLT. Trailing
         // com default — não quebra call sites existentes. null quando o test-run não chegou a
         // produzir XML (falha antes/durante a aplicação do XSLT, ou engine=tcl sem runner).
-        string? ActualXml = null,
-        string? ExpectedXml = null);
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? ActualXml = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? ExpectedXml = null);
 
     /// <summary>
     /// Diff granular por regra (issue #367 / LayoutParserReact #228): agrupa as divergências de
@@ -96,8 +100,8 @@ namespace LayoutParserApi.Models.Entities.Fiscal
     /// </summary>
     public sealed record MappingTestRunDivergenceGroup(
         Guid RuleId,
-        IReadOnlyList<string>? SourceRefs,
-        IReadOnlyList<MappingDraftRuleEvidence>? Evidence,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] IReadOnlyList<string>? SourceRefs,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] IReadOnlyList<MappingDraftRuleEvidence>? Evidence,
         IReadOnlyList<MappingTestRunDivergence> Diffs);
 
     /// <summary>Helpers de projeção sobre <see cref="MappingTestRunSummary"/> — issue #367.</summary>
