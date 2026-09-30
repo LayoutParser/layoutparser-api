@@ -939,20 +939,21 @@ folder (it stores customer fiscal documents).
 **🇧🇷** Código: [`Controllers/StudioModelController.cs`](Controllers/StudioModelController.cs), DTOs em
 [`Models/Dtos/StudioModel/StudioModelDocument.cs`](Models/Dtos/StudioModel/StudioModelDocument.cs), serviços em
 `Services/StudioModel/`. Desenho: [`docs/architecture/studio-model-design.md`](docs/architecture/studio-model-design.md).
-**Somente leitura** (Fase 1); não aplica guarda de engine nem auditoria.
+**Somente leitura** (Fases 1 e 2); não aplica guarda de engine nem auditoria.
 
 ```
-GET /api/workspaces/{workspaceId}/mappings/{mapperGuid}/studio-model?engine=sysmiddle
+GET /api/workspaces/{workspaceId}/mappings/{mapperGuid}/studio-model?engine=sysmiddle|tcl
 ```
 
 Papéis: qualquer membro do workspace. Resposta `200` (`schemaVersion = 1`): `artifact` (engine, id, hashes, `eTag`),
 `capabilities` (`edit: false` na Fase 1), `trees.input`/`trees.target`, `nodes`, `links`, `rules`, `datatypes` e
 `diagnostics`. Dicionários preservam a ordem da árvore; campos ausentes no XML vêm `null` e não são serializados.
 
-| `engine` | Status na Fase 1 |
+| `engine` | Status |
 |----------|------------------|
-| `sysmiddle` | Implementado. |
-| `tcl`, `xslt` | `501` (sem adaptador; roadmap das próximas fases). |
+| `sysmiddle` | Implementado (Fase 1). |
+| `tcl` | Implementado (Fase 2): só árvore de entrada (`line`/`field`; `CHILD` vira linha aninhada; `offset` = soma dos `length` anteriores na linha), sem `links`/`rules`, `capabilities.edit=false`. Ids `tcl:<caminho-por-nome>` (homônimos irmãos: sufixo `~2`, `~3` + diagnóstico `AMBIGUOUS_NAME_PATH`). `eTag`/`rawHash` = SHA-256 do TCL. TCL malformado responde `200` com diagnóstico (`TCL_UNPARSEABLE`, `TCL_NO_LINES`, `TCL_MISSING_NAME`, `TCL_UNKNOWN_CHILD`, `TCL_CHILD_CYCLE`). O TCL do mapper é gerado a partir do layout de entrada dele. |
+| `xslt` | `501` (sem adaptador; Fase 4). |
 | outro valor | `400`. |
 
 | Código | Quando |
@@ -961,7 +962,7 @@ Papéis: qualquer membro do workspace. Resposta `200` (`schemaVersion = 1`): `ar
 | `304` | `If-None-Match` casa o `ETag` atual. |
 | `400` | `engine` inválido. |
 | `404` | Sem identidade/não-membro, ou mapper inexistente. |
-| `501` | Engine válido sem adaptador (`tcl`/`xslt`). |
+| `501` | Engine válido sem adaptador (`xslt`). |
 | `503` | Catálogo de mappers indisponível (corpo genérico, nunca expõe XML). |
 
 - **Diagnósticos** (não bloqueantes, exceto o `error`): `ORPHAN_LINK`, `AMBIGUOUS_NAME_PATH`, `DUPLICATE_NODE_ID`,
@@ -981,8 +982,9 @@ Exemplo sintético (abreviado):
 ```
 
 **🇺🇸** Read-only endpoint (Phase 1) returning the single Mapping Studio model (`schemaVersion = 1`): input/target
-trees, nodes, links, rules, datatypes and diagnostics. `engine=sysmiddle` is implemented; `tcl`/`xslt` return `501`
-in Phase 1; any other value returns `400`. Responses carry `ETag` and `Cache-Control: private, no-cache`;
+trees, nodes, links, rules, datatypes and diagnostics. `engine=sysmiddle` (Phase 1) and `engine=tcl` (Phase 2: input tree only — lines/fields, `CHILD` as nested line,
+`offset` = running sum of previous `length`s, no links/rules, deterministic `tcl:<name-path>` ids, malformed TCL yields `200` with a diagnostic)
+are implemented; `xslt` returns `501`; any other value returns `400`. Responses carry `ETag` and `Cache-Control: private, no-cache`;
 a matching `If-None-Match` yields `304`. `404` for non-members or unknown mapper, `503` when the mapper catalog is
 unavailable. Diagnostics are listed above (only `TARGET_HAS_LINK_AND_RULE` is an `error`). Known limitation: the
 `DataTypeVO` catalog is optional; without a source the type name is `?` in `display.text`.
