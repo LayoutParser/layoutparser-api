@@ -12,7 +12,7 @@ namespace LayoutParserApi.Services.StudioModel
         public StudioModelInvalidEngineException(string message) : base(message) { }
     }
 
-    /// <summary>Engine conhecido mas sem adaptador nesta versão (tcl/xslt na Fase 1) → 501 <c>{error}</c>.</summary>
+    /// <summary>Engine conhecido mas sem adaptador nesta versão (xslt) → 501 <c>{error}</c>.</summary>
     public sealed class StudioModelEngineNotSupportedException : Exception
     {
         public StudioModelEngineNotSupportedException(string message) : base(message) { }

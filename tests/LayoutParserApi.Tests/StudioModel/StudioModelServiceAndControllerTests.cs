@@ -43,7 +43,7 @@ namespace LayoutParserApi.Tests.StudioModel
         [Theory]
         [InlineData("tcl")]
         [InlineData("xslt")]
-        public async Task Engines_conhecidos_sem_adaptador_lancam_501(string engine)
+        public async Task Engine_sem_adaptador_registrado_lanca_501(string engine)
             => await Assert.ThrowsAsync<StudioModelEngineNotSupportedException>(() => Build().Svc.GetAsync(Guid.NewGuid(), "MAP", engine, CancellationToken.None));
 
         [Fact]

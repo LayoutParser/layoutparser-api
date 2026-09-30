@@ -50,6 +50,13 @@ namespace LayoutParserApi.Services.XmlAnalysis
         }
 
         /// <summary>
+        /// Gera o TCL a partir do XML de layout já em memória (sem I/O; usado pelo studio-model, Fase 2).
+        /// Lança <see cref="System.Xml.XmlException"/> se o XML for inválido — o chamador degrada.
+        /// </summary>
+        public string GenerateTclFromLayoutXml(string layoutXml)
+            => GenerateTclContent(XDocument.Parse(layoutXml));
+
+        /// <summary>
         /// Gera conteúdo TCL a partir do documento de layout
         /// </summary>
         private string GenerateTclContent(XDocument layoutDoc)

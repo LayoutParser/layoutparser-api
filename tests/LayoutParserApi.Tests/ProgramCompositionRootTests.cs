@@ -97,6 +97,7 @@ namespace LayoutParserApi.Tests
             using var scope = _factory.Services.CreateScope();
             var adapters = scope.ServiceProvider.GetServices<LayoutParserApi.Services.StudioModel.IStudioModelAdapter>().ToList();
             Assert.Contains(adapters, a => a.Engine == "sysmiddle");
+            Assert.Contains(adapters, a => a.Engine == "tcl");
         }
 
         [Theory]
