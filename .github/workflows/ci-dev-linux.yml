@@ -20,8 +20,6 @@ jobs:
     runs-on: [self-hosted, linux, dev-local]
     timeout-minutes: 30
     env:
-      # setup-dotnet instala em /usr/share/dotnet por padrao (sem permissao para o usuario do runner): usar o tool cache.
-      DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH_DEV_LINUX || '/opt/layoutparser-api' }}
       API_URL: ${{ vars.API_URL_DEV_LINUX || 'http://localhost:5100' }}
     steps:
@@ -30,6 +28,9 @@ jobs:
         path: layoutparser-api
 
     - uses: actions/setup-dotnet@v6
+      env:
+        # setup-dotnet instala em /usr/share/dotnet por padrao (sem permissao para o usuario do runner). O contexto runner so vale em nivel de STEP.
+        DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
       with:
         dotnet-version: '10.0.x'
 
