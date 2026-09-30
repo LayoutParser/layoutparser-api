@@ -1,0 +1,448 @@
+{
+  "schemaVersion": 1,
+  "artifact": {
+    "engine": "sysmiddle",
+    "id": "MAP_00000000-0000-0000-0000-000000001001",
+    "name": "MAP_EXEMPLO_TXT_XML_PEDIDO",
+    "rawHash": "sha256:9a90f17eb3544757cb7964479cb5f7cd2c02b1bec625f3fdeb75881b8036f259",
+    "eTag": "\"MiJygT1pcpgDy851cYz0XA==\"",
+    "variantFields": [],
+    "sources": [
+      {
+        "role": "mapper",
+        "id": "MAP_00000000-0000-0000-0000-000000001001",
+        "rawHash": "sha256:7ff9dc57f5812aca623fc789691540fdc7e7253ee21a2464a74fa610ea3f9969"
+      },
+      {
+        "role": "input-layout",
+        "id": "LAY_00000000-0000-0000-0000-00000000a001",
+        "rawHash": "sha256:ee6afc8f0c07a3d09c5184a1a2151b63a67bd46622712b8e965ebd1383b06e01"
+      },
+      {
+        "role": "target-layout",
+        "id": "LAY_00000000-0000-0000-0000-00000000a002",
+        "rawHash": "sha256:fdc93b13928e53f4eaa2263c0fda54cee01e970b7873e5789b7288a9bb8dd655"
+      }
+    ]
+  },
+  "capabilities": {
+    "edit": false,
+    "editableOps": []
+  },
+  "trees": {
+    "input": {
+      "layoutRef": "LAY_00000000-0000-0000-0000-00000000a001",
+      "format": "text-positional",
+      "rootIds": [
+        "LIN_00000000-0000-0000-0000-00000000b001"
+      ],
+      "available": true
+    },
+    "target": {
+      "layoutRef": "LAY_00000000-0000-0000-0000-00000000a002",
+      "format": "xml",
+      "rootIds": [
+        "GRT_00000000-0000-0000-0000-00000000e001"
+      ],
+      "available": true
+    }
+  },
+  "nodes": {
+    "LIN_00000000-0000-0000-0000-00000000b001": {
+      "tree": "input",
+      "type": "line",
+      "name": "LINHA_CAB",
+      "path": "LINHA_CAB",
+      "order": 1,
+      "required": true,
+      "display": {
+        "text": "LINHA_CAB    (+, 1, 1)",
+        "icon": "line",
+        "linked": false
+      },
+      "props": {
+        "initialValue": "CAB",
+        "minOccurs": 1,
+        "maxOccurs": 1,
+        "validateLength": false,
+        "validateFieldLesserLength": true,
+        "positionalGroupRepetition": false,
+        "notRealizeParser": false
+      }
+    },
+    "FLD_00000000-0000-0000-0000-00000000c001": {
+      "tree": "input",
+      "type": "field",
+      "name": "TipoRegistro",
+      "path": "LINHA_CAB/TipoRegistro",
+      "parentId": "LIN_00000000-0000-0000-0000-00000000b001",
+      "order": 1,
+      "required": true,
+      "display": {
+        "text": "TipoRegistro    (+, ?)",
+        "icon": "field",
+        "linked": false
+      },
+      "props": {
+        "length": 3,
+        "align": "Left",
+        "trim": "All",
+        "staticValue": "CAB",
+        "isStaticValue": true,
+        "isSequential": false,
+        "startValue": 1,
+        "incrementValue": 1,
+        "caseSensitive": false,
+        "dataType": {
+          "guid": "DAT_00000000-0000-0000-0000-00000000d001"
+        },
+        "offset": 0
+      }
+    },
+    "FLD_00000000-0000-0000-0000-00000000c002": {
+      "tree": "input",
+      "type": "field",
+      "name": "NumeroPedido",
+      "path": "LINHA_CAB/NumeroPedido",
+      "parentId": "LIN_00000000-0000-0000-0000-00000000b001",
+      "order": 2,
+      "required": true,
+      "display": {
+        "text": "NumeroPedido    (+, ?)",
+        "icon": "field",
+        "linked": true
+      },
+      "props": {
+        "length": 6,
+        "align": "Left",
+        "trim": "All",
+        "isStaticValue": false,
+        "isSequential": false,
+        "startValue": 1,
+        "incrementValue": 1,
+        "caseSensitive": false,
+        "dataType": {
+          "guid": "DAT_00000000-0000-0000-0000-00000000d001"
+        },
+        "offset": 3
+      }
+    },
+    "LIN_00000000-0000-0000-0000-00000000b002": {
+      "tree": "input",
+      "type": "line",
+      "name": "LINHA_ITEM",
+      "path": "LINHA_CAB/LINHA_ITEM",
+      "parentId": "LIN_00000000-0000-0000-0000-00000000b001",
+      "order": 3,
+      "required": false,
+      "display": {
+        "text": "LINHA_ITEM    (-, 1, 999)",
+        "icon": "line",
+        "linked": true
+      },
+      "props": {
+        "initialValue": "ITE",
+        "minOccurs": 1,
+        "maxOccurs": 999,
+        "validateLength": false,
+        "validateFieldLesserLength": true,
+        "positionalGroupRepetition": false,
+        "notRealizeParser": false
+      }
+    },
+    "FLD_00000000-0000-0000-0000-00000000c003": {
+      "tree": "input",
+      "type": "field",
+      "name": "TipoRegistro",
+      "path": "LINHA_CAB/LINHA_ITEM/TipoRegistro",
+      "parentId": "LIN_00000000-0000-0000-0000-00000000b002",
+      "order": 1,
+      "required": true,
+      "display": {
+        "text": "TipoRegistro    (+, ?)",
+        "icon": "field",
+        "linked": false
+      },
+      "props": {
+        "length": 3,
+        "align": "Left",
+        "trim": "All",
+        "staticValue": "ITE",
+        "isStaticValue": true,
+        "isSequential": false,
+        "startValue": 1,
+        "incrementValue": 1,
+        "caseSensitive": false,
+        "dataType": {
+          "guid": "DAT_00000000-0000-0000-0000-00000000d001"
+        },
+        "offset": 0
+      }
+    },
+    "FLD_00000000-0000-0000-0000-00000000c004": {
+      "tree": "input",
+      "type": "field",
+      "name": "CodigoProduto",
+      "path": "LINHA_CAB/LINHA_ITEM/CodigoProduto",
+      "parentId": "LIN_00000000-0000-0000-0000-00000000b002",
+      "order": 2,
+      "required": true,
+      "display": {
+        "text": "CodigoProduto    (+, ?)",
+        "icon": "field",
+        "linked": true
+      },
+      "props": {
+        "length": 5,
+        "align": "Left",
+        "trim": "All",
+        "isStaticValue": false,
+        "isSequential": false,
+        "startValue": 1,
+        "incrementValue": 1,
+        "caseSensitive": false,
+        "dataType": {
+          "guid": "DAT_00000000-0000-0000-0000-00000000d001"
+        },
+        "offset": 3
+      }
+    },
+    "FLD_00000000-0000-0000-0000-00000000c005": {
+      "tree": "input",
+      "type": "field",
+      "name": "Quantidade",
+      "path": "LINHA_CAB/LINHA_ITEM/Quantidade",
+      "parentId": "LIN_00000000-0000-0000-0000-00000000b002",
+      "order": 3,
+      "required": true,
+      "display": {
+        "text": "Quantidade    (+, ?)",
+        "icon": "field",
+        "linked": false
+      },
+      "props": {
+        "length": 4,
+        "align": "Right",
+        "trim": "All",
+        "isStaticValue": false,
+        "isSequential": false,
+        "startValue": 1,
+        "incrementValue": 1,
+        "caseSensitive": false,
+        "dataType": {
+          "guid": "DAT_00000000-0000-0000-0000-00000000d001"
+        },
+        "offset": 8
+      }
+    },
+    "GRT_00000000-0000-0000-0000-00000000e001": {
+      "tree": "target",
+      "type": "groupTag",
+      "name": "pedido",
+      "path": "pedido",
+      "order": 1,
+      "required": true,
+      "display": {
+        "text": "pedido    (+, 1, 1)",
+        "icon": "groupTag",
+        "linked": false
+      },
+      "props": {
+        "minOccurs": 1,
+        "maxOccurs": 1,
+        "acceptEmpty": false,
+        "extra": {
+          "IsContainsAttribute": "false",
+          "NotRealizeParser": "false"
+        }
+      }
+    },
+    "TAG_00000000-0000-0000-0000-00000000f001": {
+      "tree": "target",
+      "type": "tag",
+      "name": "numero",
+      "path": "pedido/numero",
+      "parentId": "GRT_00000000-0000-0000-0000-00000000e001",
+      "order": 1,
+      "required": true,
+      "display": {
+        "text": "numero    (+, ?)",
+        "icon": "tag",
+        "linked": true
+      },
+      "props": {
+        "useCData": false,
+        "containsAttribute": false,
+        "minOccurs": 1,
+        "maxOccurs": 1,
+        "length": 0,
+        "trim": "All",
+        "isStaticValue": false,
+        "dataType": {
+          "guid": "DAT_00000000-0000-0000-0000-00000000d001"
+        },
+        "extra": {
+          "StartValue": "1",
+          "IncrementValue": "1",
+          "AlignmentType": "Left",
+          "IsCaseSensitiveValue": "false",
+          "IsSequential": "false"
+        }
+      }
+    },
+    "GRT_00000000-0000-0000-0000-00000000e002": {
+      "tree": "target",
+      "type": "groupTag",
+      "name": "item",
+      "path": "pedido/item",
+      "parentId": "GRT_00000000-0000-0000-0000-00000000e001",
+      "order": 2,
+      "required": false,
+      "display": {
+        "text": "item    (-, 0, 999)",
+        "icon": "groupTag",
+        "linked": true
+      },
+      "props": {
+        "minOccurs": 0,
+        "maxOccurs": 999,
+        "acceptEmpty": false,
+        "extra": {
+          "IsContainsAttribute": "false",
+          "NotRealizeParser": "false"
+        }
+      }
+    },
+    "TAG_00000000-0000-0000-0000-00000000f002": {
+      "tree": "target",
+      "type": "tag",
+      "name": "produto",
+      "path": "pedido/item/produto",
+      "parentId": "GRT_00000000-0000-0000-0000-00000000e002",
+      "order": 1,
+      "required": true,
+      "display": {
+        "text": "produto    (+, ?)",
+        "icon": "tag",
+        "linked": true
+      },
+      "props": {
+        "useCData": false,
+        "containsAttribute": false,
+        "minOccurs": 1,
+        "maxOccurs": 1,
+        "length": 0,
+        "trim": "All",
+        "isStaticValue": false,
+        "extra": {
+          "AlignmentType": "Left"
+        }
+      }
+    },
+    "TAG_00000000-0000-0000-0000-00000000f003": {
+      "tree": "target",
+      "type": "tag",
+      "name": "qtd",
+      "path": "pedido/item/qtd",
+      "parentId": "GRT_00000000-0000-0000-0000-00000000e002",
+      "order": 2,
+      "required": true,
+      "display": {
+        "text": "qtd    (+, ?)",
+        "icon": "tag",
+        "linked": true
+      },
+      "props": {
+        "useCData": false,
+        "containsAttribute": false,
+        "minOccurs": 1,
+        "maxOccurs": 1,
+        "length": 0,
+        "trim": "All",
+        "isStaticValue": false,
+        "extra": {
+          "AlignmentType": "Left"
+        }
+      }
+    }
+  },
+  "links": {
+    "LKM_00000000-0000-0000-0000-000000003001": {
+      "sourceId": "FLD_00000000-0000-0000-0000-00000000c002",
+      "targetId": "TAG_00000000-0000-0000-0000-00000000f001",
+      "order": 1,
+      "display": {
+        "text": "NumeroPedido_numero",
+        "icon": "linkMapping",
+        "underTargetId": "TAG_00000000-0000-0000-0000-00000000f001"
+      },
+      "opts": {
+        "trim": "All",
+        "truncate": false,
+        "allowEmpty": false,
+        "notCreateGroupTagOnlyChilds": false
+      },
+      "iterates": false
+    },
+    "LKM_00000000-0000-0000-0000-000000003002": {
+      "sourceId": "LIN_00000000-0000-0000-0000-00000000b002",
+      "targetId": "GRT_00000000-0000-0000-0000-00000000e002",
+      "order": 2,
+      "display": {
+        "text": "LINHA_ITEM_item",
+        "icon": "linkMapping",
+        "underTargetId": "GRT_00000000-0000-0000-0000-00000000e002"
+      },
+      "opts": {
+        "trim": "Nothing",
+        "truncate": false,
+        "allowEmpty": false,
+        "notCreateGroupTagOnlyChilds": false
+      },
+      "iterates": true
+    },
+    "LKM_00000000-0000-0000-0000-000000003003": {
+      "sourceId": "FLD_00000000-0000-0000-0000-00000000c004",
+      "targetId": "TAG_00000000-0000-0000-0000-00000000f002",
+      "order": 3,
+      "display": {
+        "text": "CodigoProduto_produto",
+        "icon": "linkMapping",
+        "underTargetId": "TAG_00000000-0000-0000-0000-00000000f002"
+      },
+      "opts": {
+        "trim": "All",
+        "truncate": false,
+        "default": "SEM-COD",
+        "allowEmpty": false,
+        "notCreateGroupTagOnlyChilds": false
+      },
+      "iterates": false
+    }
+  },
+  "rules": {
+    "RUL_00000000-0000-0000-0000-000000002001": {
+      "anchorId": "TAG_00000000-0000-0000-0000-00000000f003",
+      "display": {
+        "text": "Rule_qtd",
+        "icon": "rule",
+        "underTargetId": "TAG_00000000-0000-0000-0000-00000000f003"
+      },
+      "name": "Rule_qtd",
+      "code": "#.qtd = I.LINHA_CAB/LINHA_ITEM/Quantidade;\nif (#.qtd == \"0000\") begin\n  T.pedido/item/qtd = \"1\";\nend\nelse begin\n  T.pedido/item/qtd = RemoveZerosLeft(#.qtd);\nend",
+      "reads": [
+        "LINHA_CAB/LINHA_ITEM/Quantidade"
+      ],
+      "writes": [
+        "pedido/item/qtd"
+      ],
+      "functions": [
+        "RemoveZerosLeft"
+      ],
+      "prePos": false,
+      "opaque": []
+    }
+  },
+  "datatypes": {},
+  "diagnostics": []
+}

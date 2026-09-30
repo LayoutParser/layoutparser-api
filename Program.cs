@@ -548,6 +548,11 @@ try
     // mapper Sysmiddle real — generaliza GuidXPathCatalog (ai/XslSynth.Contracts), reaproveita
     // ICachedMapperService/ICachedLayoutService já registrados acima.
     builder.Services.AddScoped<LayoutParserApi.Services.Interfaces.ILayoutTreeService, LayoutParserApi.Services.Fiscal.LayoutTreeService>();
+    // ✅ Studio-model (Fase 1, docs/architecture/studio-model-design.md §3.3): modelo único do Mapping
+    // Studio, somente leitura, adaptador Sysmiddle. TCL/XSLT entram nas Fases 3-4 (hoje → 501).
+    // IDataTypeCatalog é opcional (sem registro, o nome do tipo vira "?").
+    builder.Services.AddScoped<LayoutParserApi.Services.StudioModel.IStudioModelAdapter, LayoutParserApi.Services.StudioModel.Sysmiddle.SysmiddleStudioModelAdapter>();
+    builder.Services.AddScoped<LayoutParserApi.Services.Interfaces.IStudioModelService, LayoutParserApi.Services.StudioModel.StudioModelService>();
     // ✅ Slice 5 (issue #231): compilação determinística MappingDraftRule[] → XSLT/TCL + Fiscal Test
     // Lab. Mesmo banco/padrão ADO.NET; compile/test-run reaproveitam CanonicalDiffer/XsdValidationService
     // (já registrados/disponíveis via DI) sem I/O externo/Ollama.
