@@ -217,12 +217,12 @@ namespace LayoutParserApi.Tests.Controllers
 
             var ok = Assert.IsType<OkObjectResult>(result);
             var payload = ok.Value!;
-            var artifactSource = (string)payload.GetType().GetProperty("artifactSource")!.GetValue(payload)!;
-            var derivedFromReleaseId = (Guid?)payload.GetType().GetProperty("derivedFromReleaseId")!.GetValue(payload);
-            var rulesSnapshotHash = (string)payload.GetType().GetProperty("rulesSnapshotHash")!.GetValue(payload)!;
-            var manuallyEditedKinds = (IReadOnlyList<string>?)payload.GetType().GetProperty("manuallyEditedArtifactKinds")!.GetValue(payload);
-            var status = (string)payload.GetType().GetProperty("status")!.GetValue(payload)!;
-            var rulesDesynced = (bool)payload.GetType().GetProperty("rulesDesynced")!.GetValue(payload)!;
+            var artifactSource = (string)payload.GetType().GetProperty("artifactSource", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(payload)!;
+            var derivedFromReleaseId = (Guid?)payload.GetType().GetProperty("derivedFromReleaseId", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(payload);
+            var rulesSnapshotHash = (string)payload.GetType().GetProperty("rulesSnapshotHash", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(payload)!;
+            var manuallyEditedKinds = (IReadOnlyList<string>?)payload.GetType().GetProperty("manuallyEditedArtifactKinds", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(payload);
+            var status = (string)payload.GetType().GetProperty("status", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(payload)!;
+            var rulesDesynced = (bool)payload.GetType().GetProperty("rulesDesynced", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(payload)!;
 
             Assert.Equal(MappingReleaseArtifactSource.ManualEdit, artifactSource);
             Assert.Equal(baseRelease.ReleaseId, derivedFromReleaseId);
@@ -250,8 +250,8 @@ namespace LayoutParserApi.Tests.Controllers
             var result1 = await controller1.UpdateArtifact(workspaceId, draftId, "xslt",
                 new UpdateArtifactRequest { Content = editedXslt, Justification = "ajuste manual" }, CancellationToken.None);
             var ok1 = Assert.IsType<OkObjectResult>(result1);
-            var releaseId1 = (Guid)ok1.Value!.GetType().GetProperty("releaseId")!.GetValue(ok1.Value)!;
-            var eTag1 = (string)ok1.Value!.GetType().GetProperty("eTag")!.GetValue(ok1.Value)!;
+            var releaseId1 = (Guid)ok1.Value!.GetType().GetProperty("releaseId", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(ok1.Value)!;
+            var eTag1 = (string)ok1.Value!.GetType().GetProperty("eTag", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(ok1.Value)!;
 
             Assert.Equal(2, releaseStore.Releases.Count);
 
@@ -264,7 +264,7 @@ namespace LayoutParserApi.Tests.Controllers
                 new UpdateArtifactRequest { Content = editedXslt, Justification = "ajuste manual (repetido)" }, CancellationToken.None);
 
             var ok2 = Assert.IsType<OkObjectResult>(result2);
-            var releaseId2 = (Guid)ok2.Value!.GetType().GetProperty("releaseId")!.GetValue(ok2.Value)!;
+            var releaseId2 = (Guid)ok2.Value!.GetType().GetProperty("releaseId", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)!.GetValue(ok2.Value)!;
 
             Assert.Equal(releaseId1, releaseId2); // convergiu — não duplicou.
             Assert.Equal(2, releaseStore.Releases.Count); // nenhuma release nova gravada.

@@ -26,6 +26,7 @@ namespace LayoutParserApi.Tests.Controllers
         {
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase, // como o AddJsonOptions do MVC (camelCase)
         };
 
         // --- dublês ---

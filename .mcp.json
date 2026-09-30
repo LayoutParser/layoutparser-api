@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "layoutparser-hub": {
+      "type": "http",
+      "url": "http://localhost:5210/mcp",
+      "headers": { "Authorization": "Bearer ${LAYOUTPARSER_MCP_TOKEN}" }
+    }
+  }
+}
