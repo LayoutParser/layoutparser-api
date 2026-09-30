@@ -33,6 +33,16 @@ namespace LayoutParserApi.Controllers
         /// 501: engine sem adaptador (tcl/xslt na Fase 1); 503: catálogo indisponível; 304: <c>If-None-Match</c> casa o eTag.
         /// Headers: <c>ETag</c> e <c>Cache-Control: private, no-cache</c>.
         /// </summary>
+        /// <param name="workspaceId">GUID do workspace (rota).</param>
+        /// <param name="mapperGuid">Identificador do mapper no catálogo (rota).</param>
+        /// <param name="engine">Engine do artefato: <c>sysmiddle</c> (Fase 1); <c>tcl</c>/<c>xslt</c> retornam 501.</param>
+        /// <param name="cancellationToken">Token de cancelamento da requisição.</param>
+        /// <response code="200">Modelo montado (<see cref="LayoutParserApi.Models.Dtos.StudioModel.StudioModelDocument"/>).</response>
+        /// <response code="304"><c>If-None-Match</c> casa o ETag atual.</response>
+        /// <response code="400"><c>engine</c> inválido.</response>
+        /// <response code="404">Sem identidade/não-membro ou mapper inexistente.</response>
+        /// <response code="501">Engine válido sem adaptador na Fase 1 (tcl/xslt).</response>
+        /// <response code="503">Catálogo de mappers indisponível.</response>
         [HttpGet("studio-model")]
         [RequireWorkspaceRole(WorkspaceRole.Owner, WorkspaceRole.FiscalAdmin, WorkspaceRole.Mapper, WorkspaceRole.Reviewer, WorkspaceRole.Operator, WorkspaceRole.Viewer)]
         public async Task<IActionResult> GetStudioModel(Guid workspaceId, string mapperGuid, [FromQuery] string? engine, CancellationToken cancellationToken)

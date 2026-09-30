@@ -934,6 +934,59 @@ just yields `historyRegistered: false`). `GET/DELETE api/workspaces/{ws}/analyse
 live under `ML:FiscalAnalysesPath`. ⚠️ **Production pending:** decide path, permissions and size of that
 folder (it stores customer fiscal documents).
 
+### 8.11 `GET .../mappings/{mapperGuid}/studio-model` — modelo único do Mapping Studio (Fase 1) / single Mapping Studio model (Phase 1)
+
+**🇧🇷** Código: [`Controllers/StudioModelController.cs`](Controllers/StudioModelController.cs), DTOs em
+[`Models/Dtos/StudioModel/StudioModelDocument.cs`](Models/Dtos/StudioModel/StudioModelDocument.cs), serviços em
+`Services/StudioModel/`. Desenho: [`docs/architecture/studio-model-design.md`](docs/architecture/studio-model-design.md).
+**Somente leitura** (Fase 1); não aplica guarda de engine nem auditoria.
+
+```
+GET /api/workspaces/{workspaceId}/mappings/{mapperGuid}/studio-model?engine=sysmiddle
+```
+
+Papéis: qualquer membro do workspace. Resposta `200` (`schemaVersion = 1`): `artifact` (engine, id, hashes, `eTag`),
+`capabilities` (`edit: false` na Fase 1), `trees.input`/`trees.target`, `nodes`, `links`, `rules`, `datatypes` e
+`diagnostics`. Dicionários preservam a ordem da árvore; campos ausentes no XML vêm `null` e não são serializados.
+
+| `engine` | Status na Fase 1 |
+|----------|------------------|
+| `sysmiddle` | Implementado. |
+| `tcl`, `xslt` | `501` (sem adaptador; roadmap das próximas fases). |
+| outro valor | `400`. |
+
+| Código | Quando |
+|--------|--------|
+| `200` | Modelo montado (headers `ETag` e `Cache-Control: private, no-cache`). |
+| `304` | `If-None-Match` casa o `ETag` atual. |
+| `400` | `engine` inválido. |
+| `404` | Sem identidade/não-membro, ou mapper inexistente. |
+| `501` | Engine válido sem adaptador (`tcl`/`xslt`). |
+| `503` | Catálogo de mappers indisponível (corpo genérico, nunca expõe XML). |
+
+- **Diagnósticos** (não bloqueantes, exceto o `error`): `ORPHAN_LINK`, `AMBIGUOUS_NAME_PATH`, `DUPLICATE_NODE_ID`,
+  `MISSING_ELEMENT_GUID`, `OFFSET_UNRESOLVED`, `UNKNOWN_NODE_TYPE`, `LAYOUT_UNAVAILABLE`, `MAPPER_UNREADABLE`,
+  `TARGET_HAS_MULTIPLE_LINKS` (todos `warning`) e `TARGET_HAS_LINK_AND_RULE` (`error`).
+- **Limitação do catálogo `DataTypeVO`:** o nome do tipo vem de um catálogo opcional (GUID `DAT_` para nome). Sem fonte
+  registrada, o nome vira `?` e aparece assim em `display.text`. Não é erro.
+
+Exemplo sintético (abreviado):
+
+```json
+{ "schemaVersion": 1,
+  "artifact": { "engine": "sysmiddle", "id": "MAP_EXEMPLO", "eTag": "\"abc123\"" },
+  "capabilities": { "edit": false, "editableOps": [] },
+  "nodes": { "N1": { "tree": "target", "type": "field", "name": "Campo", "display": { "text": "Campo : ?" } } },
+  "diagnostics": [ { "code": "ORPHAN_LINK", "severity": "warning", "message": "..." } ] }
+```
+
+**🇺🇸** Read-only endpoint (Phase 1) returning the single Mapping Studio model (`schemaVersion = 1`): input/target
+trees, nodes, links, rules, datatypes and diagnostics. `engine=sysmiddle` is implemented; `tcl`/`xslt` return `501`
+in Phase 1; any other value returns `400`. Responses carry `ETag` and `Cache-Control: private, no-cache`;
+a matching `If-None-Match` yields `304`. `404` for non-members or unknown mapper, `503` when the mapper catalog is
+unavailable. Diagnostics are listed above (only `TARGET_HAS_LINK_AND_RULE` is an `error`). Known limitation: the
+`DataTypeVO` catalog is optional; without a source the type name is `?` in `display.text`.
+
 ---
 
 ## 9. Configuração / Configuration

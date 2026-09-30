@@ -30,15 +30,19 @@ namespace LayoutParserApi.Models.Dtos.StudioModel
     /// <summary>Fonte autoritária (<c>mapper</c> | <c>input-layout</c> | <c>target-layout</c>).</summary>
     public sealed record StudioSource(string Role, string? Id, string? RawHash);
 
+    /// <summary>Capacidades do modelo (<c>Edit</c> é false na Fase 1, somente leitura).</summary>
     public sealed record StudioCapabilities(bool Edit, List<string> EditableOps);
 
+    /// <summary>Árvores de entrada e destino.</summary>
     public sealed record StudioTrees(StudioTree Input, StudioTree Target);
 
     /// <summary><c>Format</c> ∈ text-positional | text-delimited | xml | json | unknown.</summary>
     public sealed record StudioTree(string? LayoutRef, string Format, List<string> RootIds, bool Available);
 
+    /// <summary>Apresentação do nó; <c>Text</c> usa <c>?</c> quando o nome do DataType não é resolvido.</summary>
     public sealed record StudioNodeDisplay(string Text, string Icon, bool Linked);
 
+    /// <summary>Nó de uma das árvores (entrada/destino), indexado por id em <c>Nodes</c>.</summary>
     public sealed record StudioNode(
         string Tree,
         string Type,
@@ -50,6 +54,7 @@ namespace LayoutParserApi.Models.Dtos.StudioModel
         StudioNodeDisplay Display,
         Dictionary<string, object?> Props);
 
+    /// <summary>Apresentação do vínculo.</summary>
     public sealed record StudioLinkDisplay(string Text, string Icon, string? UnderTargetId);
 
     /// <summary>Opções do vínculo; <c>null</c> = elemento ausente no XML (nunca inventamos default).</summary>
@@ -65,6 +70,7 @@ namespace LayoutParserApi.Models.Dtos.StudioModel
         bool? UseDecimalMapper,
         string? FullXPath);
 
+    /// <summary>Vínculo origem→destino pendurado no nó de destino.</summary>
     public sealed record StudioLink(
         string? SourceId,
         string? TargetId,
@@ -73,10 +79,13 @@ namespace LayoutParserApi.Models.Dtos.StudioModel
         StudioLinkOpts Opts,
         bool Iterates);
 
+    /// <summary>Apresentação da regra.</summary>
     public sealed record StudioRuleDisplay(string Text, string Icon, string? UnderTargetId);
 
+    /// <summary>Trecho de regra que não foi interpretado (motivo e intervalo opcional).</summary>
     public sealed record StudioOpaqueSpan(string Reason, int[]? Span);
 
+    /// <summary>Regra (código/DSL) ancorada em um nó de destino.</summary>
     public sealed record StudioRule(
         string? AnchorId,
         StudioRuleDisplay Display,
@@ -88,6 +97,7 @@ namespace LayoutParserApi.Models.Dtos.StudioModel
         bool PrePos,
         List<StudioOpaqueSpan> Opaque);
 
+    /// <summary>Tipo de dado resolvido via catálogo <c>DataTypeVO</c> (nome, ex. <c>Str_MAX</c>).</summary>
     public sealed record StudioDataType(string Name);
 
     /// <summary>
