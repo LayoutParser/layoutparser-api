@@ -37,6 +37,9 @@ namespace LayoutParserApi.Tests.Security
             ["WorkspacesController.GetWorkspace"] =
                 "GET /api/workspaces/{workspaceId}: a própria ação consulta GetWorkspaceForMemberAsync(workspaceId, userId) e devolve 404 uniforme para não-membro (WorkspacesControllerTests).",
 
+            ["AdminController.WorkspaceMembers"] =
+                "GET /api/admin/workspaces/{workspaceId}/members: visão GLOBAL do super-administrador, cross-workspace de propósito. Protegida por [RequireSudo] no controller (não-sudo -> 404; sudo só por e-mail em Security:SudoEmails, com auditoria por acesso) — ver SudoTests.",
+
             ["FiscalMappingPackagesController.CreatePackage"] = ViaMembershipManual,
             ["FiscalMappingPackagesController.ListProjects"] = ViaMembershipManual,
             ["FiscalMappingPackagesController.CreateRevision"] = ViaMembershipManual,

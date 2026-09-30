@@ -65,5 +65,12 @@ namespace LayoutParserApi.Services.Security
         /// Confiança = mesma guarda de loopback/rede confiável dos demais headers de identidade.
         /// </summary>
         public string IdentityEmailHeader { get; set; } = "x-layoutparser-identity-email";
+
+        /// <summary>
+        /// E-mails (normalizados na comparação) com papel <b>sudo</b> (super-administrador do produto):
+        /// acesso aos endpoints <c>/api/admin/*</c>. Fonte da verdade é ESTA config da API (env
+        /// <c>Security__SudoEmails__0</c>...), nunca um header enviado pelo portal. Vazio = ninguém é sudo.
+        /// </summary>
+        public List<string> SudoEmails { get; set; } = new();
     }
 }
