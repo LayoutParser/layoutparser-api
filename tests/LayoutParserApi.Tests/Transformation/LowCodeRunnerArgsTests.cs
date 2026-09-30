@@ -149,7 +149,8 @@ namespace LayoutParserApi.Tests.Transformation
         public void FileName_ausente_cai_no_nome_do_arquivo_de_entrada()
         {
             var posicional = RunnerArgsParser.Parse(
-                new[] { @"C:\gf", "PAC_1", "MAP_9", @"C:\docs\pedido.txt", @"C:\out.xml" });
+                new[] { Path.Combine(Path.GetTempPath(), "gf"), "PAC_1", "MAP_9",
+                        Path.Combine(Path.GetTempPath(), "docs", "pedido.txt"), Path.Combine(Path.GetTempPath(), "out.xml") });
 
             Assert.Equal("pedido.txt", posicional.Args.ResolveDocumentName());
         }
@@ -166,9 +167,10 @@ namespace LayoutParserApi.Tests.Transformation
         {
             var r = RunnerArgsParser.Parse(new[]
             {
-                "--globalFolder", @"C:\gf",
-                "--inputFile",    @"C:\tmp\in_ab12.txt",
-                "--outputFile",   @"C:\out.xml",
+                // Caminhos neutros de plataforma: em Linux "C:\tmp\x.txt" não tem separador reconhecido por Path.GetFileName.
+                "--globalFolder", Path.Combine(Path.GetTempPath(), "gf"),
+                "--inputFile",    Path.Combine(Path.GetTempPath(), "in_ab12.txt"),
+                "--outputFile",   Path.Combine(Path.GetTempPath(), "out.xml"),
                 "--fileName",     fileName,
                 "--mapperId",     "MAP_1"
             });
