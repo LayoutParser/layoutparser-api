@@ -290,7 +290,7 @@ namespace LayoutParserApi.Services.StudioModel.Xslt
 
             private void AddRuleRaw(string? targetPath, List<string> stack, string? codeOverride, string reason, List<string> reads, List<string> funcs, XElement? el = null)
             {
-                var code = codeOverride ?? el!.ToString(SaveOptions.DisableFormatting);
+                var code = codeOverride ?? el!.ToString(SaveOptions.DisableFormatting).Replace("\r\n", "\n");
                 AddRuleCore(RuleKey(targetPath), targetPath, code, reason, reads, funcs);
             }
 
@@ -298,7 +298,7 @@ namespace LayoutParserApi.Services.StudioModel.Xslt
             public void AddGlobalRule(string id, XElement el, string reason)
             {
                 var (reads, funcs) = ScanExpressions(el, string.Empty);
-                AddRuleCore(id, null, el.ToString(SaveOptions.DisableFormatting), reason, reads, funcs);
+                AddRuleCore(id, null, el.ToString(SaveOptions.DisableFormatting).Replace("\r\n", "\n"), reason, reads, funcs);
             }
 
             private void AddRuleCore(string id, string? targetPath, string code, string reason, List<string> reads, List<string> funcs)
