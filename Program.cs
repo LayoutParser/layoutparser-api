@@ -541,6 +541,12 @@ try
     builder.Services.AddScoped<LayoutParserApi.Services.Filters.MappingEngineGuardFilter>();
     // ✅ Slice 4 (issue #226/#227): MappingExplanation — 3 adapters determinísticos (sem LLM),
     // resolvidos por Engine no controller via IEnumerable<IMappingExplanationAdapter>.
+    // Catálogo de funções da DSL Sysmiddle (builtins + DLL NDD via reflection somente-leitura; degrada sem a DLL).
+    builder.Services.AddSingleton<LayoutParserApi.Services.Sysmiddle.ISysmiddleFunctionCatalog>(sp =>
+        LayoutParserApi.Services.Sysmiddle.SysmiddleFunctionCatalog.Create(
+            sp.GetRequiredService<IConfiguration>(),
+            sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger("SysmiddleFunctionCatalog")));
     builder.Services.AddScoped<LayoutParserApi.Services.Interfaces.IMappingExplanationAdapter, LayoutParserApi.Services.Fiscal.SysmiddleExplanationAdapter>();
     builder.Services.AddScoped<LayoutParserApi.Services.Interfaces.IMappingExplanationAdapter, LayoutParserApi.Services.Fiscal.TclExplanationAdapter>();
     builder.Services.AddScoped<LayoutParserApi.Services.Interfaces.IMappingExplanationAdapter, LayoutParserApi.Services.Fiscal.XsltExplanationAdapter>();
