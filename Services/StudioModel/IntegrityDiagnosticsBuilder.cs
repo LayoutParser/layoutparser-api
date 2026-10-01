@@ -5,7 +5,10 @@ namespace LayoutParserApi.Services.StudioModel
     /// <summary>
     /// Diagnósticos de integridade de ligações/regras (issue #619; análise ConnectUs B4/A4).
     /// SOMENTE leitura: órfãos são sinalizados, NUNCA removidos. Puro, sem I/O, nunca lança.
-    /// Convive com <see cref="DiagnosticsBuilder"/> (códigos legados mantidos por compatibilidade de contrato).
+    /// Substitui os códigos legados do <see cref="DiagnosticsBuilder"/> (removidos): <c>ORPHAN_LINK</c> ->
+    /// <c>LINK_ORPHAN_SOURCE/LINK_ORPHAN_TARGET/RULE_ORPHAN_TARGET</c>; <c>TARGET_HAS_LINK_AND_RULE</c> ->
+    /// <c>TARGET_LINK_AND_RULE</c>; <c>TARGET_HAS_MULTIPLE_LINKS</c> (links) -> <c>N1_ORDER_SENSITIVE</c>;
+    /// <c>TARGET_HAS_MULTIPLE_LINKS</c> (regras) -> <c>TARGET_MULTIPLE_RULES</c>.
     /// </summary>
     public static class IntegrityDiagnosticsBuilder
     {
@@ -43,6 +46,11 @@ namespace LayoutParserApi.Services.StudioModel
                     .Select((l, i) => (l.Key, l.Value, i))
                     .GroupBy(x => x.Value.TargetId!);
 
+                // Mais de uma regra ancorada no mesmo destino (cobria o legado TARGET_HAS_MULTIPLE_LINKS p/ regras).
+                foreach (var g in rules.Where(r => r.Value.AnchorId != null).GroupBy(r => r.Value.AnchorId!).Where(g => g.Count() > 1))
+                    result.Add(new StudioDiagnostic("TARGET_MULTIPLE_RULES", "warning",
+                        "Nó de destino recebe mais de uma regra.", Id: g.Key, LinkIds: g.Select(x => x.Key).ToList()));
+
                 var targetsWithRule = rules.Values.Where(r => r.AnchorId != null).Select(r => r.AnchorId!).ToHashSet(StringComparer.Ordinal);
 
                 foreach (var g in byTarget)
@@ -58,10 +66,10 @@ namespace LayoutParserApi.Services.StudioModel
 
                     if (ids.Count > 1)
                     {
-                        // Vence a 1ª ligação COM DADOS; sem a carga real, aproxima-se pela 1ª com origem existente.
+                        // Vence a 1ª ligação COM DADOS; sem a carga real, aproxima-se pela 1ª (por Sequence) com origem existente.
                         var winner = ordered.FirstOrDefault(x => x.Value.SourceId != null && nodes.ContainsKey(x.Value.SourceId)).Key ?? ids[0];
                         result.Add(new StudioDiagnostic("N1_ORDER_SENSITIVE", "warning",
-                            $"Destino com {ids.Count} ligações: vence a 1ª com dados pela ordem do arquivo (candidata: {winner}).",
+                            $"Destino com {ids.Count} ligações: no ConnectUs vence a 1ª com dados pela ordem do arquivo. A vencedora indicada ({winner}) é uma aproximação estática (1ª ligação, por Sequence, cuja origem existe no modelo), sem dado de execução.",
                             Id: g.Key, LinkIds: ids, WinnerId: winner));
                     }
                 }

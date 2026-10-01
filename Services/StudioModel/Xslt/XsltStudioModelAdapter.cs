@@ -157,6 +157,7 @@ namespace LayoutParserApi.Services.StudioModel.Xslt
                 if (nodes.TryGetValue(id, out var n)) nodes[id] = n with { Display = n.Display with { Linked = true } };
 
             diagnostics.AddRange(DiagnosticsBuilder.Build(nodes, read2.Links, read2.Rules));
+            diagnostics.AddRange(IntegrityDiagnosticsBuilder.Build(nodes, read2.Links, read2.Rules));
 
             var xsltHash = StudioModelHasher.HashSource(src.Xslt ?? string.Empty);
             var targetHash = StudioModelHasher.HashSource(src.TargetLayoutXml);

@@ -198,15 +198,18 @@ namespace LayoutParserApi.Tests.StudioModel
 
             var d = DiagnosticsBuilder.Build(nodes, links, rules);
 
-            var orphan = d.Where(x => x.Code == "ORPHAN_LINK").ToList();
-            Assert.Contains(orphan, x => x.Id == "L3" && x.Missing!.SequenceEqual(new[] { "source" }));
-            Assert.Contains(orphan, x => x.Id == "R2");
+            Assert.DoesNotContain(d, x => x.Code is "ORPHAN_LINK" or "TARGET_HAS_LINK_AND_RULE" or "TARGET_HAS_MULTIPLE_LINKS");
             Assert.Contains(d, x => x.Code == "AMBIGUOUS_NAME_PATH" && x.Path == "t" && x.Ids!.SequenceEqual(new[] { "T1", "T2" }));
-            var both = Assert.Single(d, x => x.Code == "TARGET_HAS_LINK_AND_RULE");
+
+            var i = IntegrityDiagnosticsBuilder.Build(nodes, links, rules);
+            Assert.Contains(i, x => x.Code == "LINK_ORPHAN_SOURCE" && x.Id == "L3");
+            Assert.Contains(i, x => x.Code == "RULE_ORPHAN_TARGET" && x.Id == "R2");
+            var both = Assert.Single(i, x => x.Code == "TARGET_LINK_AND_RULE");
             Assert.Equal("T1", both.Id);
             Assert.Equal("error", both.Severity);
-            var multi = Assert.Single(d, x => x.Code == "TARGET_HAS_MULTIPLE_LINKS" && x.Id == "T3");
+            var multi = Assert.Single(i, x => x.Code == "N1_ORDER_SENSITIVE" && x.Id == "T3");
             Assert.Equal(new[] { "L1", "L2" }, multi.LinkIds);
+            Assert.Contains("aproximação estática", multi.Message);
         }
 
         [Fact]
