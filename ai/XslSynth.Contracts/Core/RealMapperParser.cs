@@ -23,8 +23,6 @@ namespace XslSynth.Core;
 public sealed class RealMapperParser
 {
     // Captura a primeira atribuição de saída T.<path> = ... na DSL.
-    private static readonly Regex TargetPathRegex =
-        new(@"T\.([A-Za-z0-9_/]+)\s*=", RegexOptions.Compiled);
 
     public MapperVo ParseFile(string path)
     {
@@ -109,8 +107,7 @@ public sealed class RealMapperParser
     public static string? TargetPathFromDsl(string? dsl)
     {
         if (string.IsNullOrWhiteSpace(dsl)) return null;
-        var m = TargetPathRegex.Match(dsl);
-        return m.Success ? m.Groups[1].Value.Trim() : null;
+        return SysmiddleDslTokenizer.TargetPaths(dsl).FirstOrDefault();
     }
 
     /// <summary>
