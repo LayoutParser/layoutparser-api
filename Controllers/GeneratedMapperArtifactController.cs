@@ -66,7 +66,7 @@ namespace LayoutParserApi.Controllers
         /// <response code="404">Mapper não encontrado no catálogo ou usuário não é membro do workspace.</response>
         /// <response code="503">Catálogo de mappers (tbMapper) indisponível no momento.</response>
         [HttpGet("generated-transformation")]
-        [RequireWorkspaceRole(WorkspaceRole.Owner, WorkspaceRole.FiscalAdmin, WorkspaceRole.Mapper, WorkspaceRole.Reviewer, WorkspaceRole.Operator, WorkspaceRole.Viewer)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         public async Task<IActionResult> GetGeneratedTransformation(Guid workspaceId, string mappingId, CancellationToken cancellationToken)
         {
             var correlationId = HttpContext.TraceIdentifier;

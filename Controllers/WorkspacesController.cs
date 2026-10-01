@@ -1,3 +1,5 @@
+using LayoutParserApi.Services.Filters;
+using LayoutParserApi.Models.Entities.Identity;
 using LayoutParserApi.Services.Interfaces;
 
 using Microsoft.AspNetCore.Mvc;
@@ -55,7 +57,14 @@ namespace LayoutParserApi.Controllers
                         workspaceId = w.WorkspaceId,
                         name = w.Name,
                         kind = w.Kind,
-                        role = w.Role,
+                        // Id canônico: legados mapper/reviewer saem como operator.
+                        role = WorkspaceRole.Canonical(w.Role),
+                        permissions = new
+                        {
+                            canEdit = WorkspaceRole.AtLeast(w.Role, WorkspaceRoleLevel.Operator),
+                            canPublish = WorkspaceRole.AtLeast(w.Role, WorkspaceRoleLevel.Admin),
+                            canManageMembers = WorkspaceRole.AtLeast(w.Role, WorkspaceRoleLevel.Admin)
+                        },
                         createdAt = w.CreatedAt
                     })
                 });
@@ -74,6 +83,7 @@ namespace LayoutParserApi.Controllers
         /// de outro usuário" respondem o MESMO 404 (nunca 403), para não permitir enumeração de
         /// workspace por ID (contrato cross-repo §2, critério de aceite #2).
         /// </summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("{workspaceId:guid}")]
         public async Task<IActionResult> GetWorkspace(Guid workspaceId, CancellationToken cancellationToken)
         {

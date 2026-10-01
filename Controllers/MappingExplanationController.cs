@@ -1,3 +1,5 @@
+using LayoutParserApi.Services.Filters;
+using LayoutParserApi.Models.Entities.Identity;
 using LayoutParserApi.Services.Interfaces;
 
 using Microsoft.AspNetCore.Mvc;
@@ -43,6 +45,7 @@ namespace LayoutParserApi.Controllers
         /// <c>draftId</c> (Slice 3), depois como <c>MapperGuid</c> Sysmiddle. Sempre 200 com o
         /// contrato canônico, exceto 404 fail-closed (sem membership OU nada resolve).
         /// </summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("explanation")]
         public async Task<IActionResult> GetExplanation(Guid workspaceId, string mappingId, string version, CancellationToken cancellationToken)
         {

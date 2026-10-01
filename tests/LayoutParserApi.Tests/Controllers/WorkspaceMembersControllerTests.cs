@@ -156,15 +156,25 @@ namespace LayoutParserApi.Tests.Controllers
             Assert.IsType<BadRequestObjectResult>(result);
         }
 
+        [Theory]
+        [InlineData("mapper")]
+        [InlineData("reviewer")]
+        public async Task Add_papel_legado_retorna_400_com_mensagem(string role)
+        {
+            var result = await Create(new FakeMembers()).Add(WorkspaceId, new AddWorkspaceMemberRequest("a@b.com", role), default);
+            var bad = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Contains("legado", bad.Value!.ToString());
+        }
+
         [Fact]
         public async Task Add_normaliza_email_e_retorna_201()
         {
             var members = new FakeMembers();
-            var result = await Create(members).Add(WorkspaceId, new AddWorkspaceMemberRequest(" A@B.com ", "mapper"), default);
+            var result = await Create(members).Add(WorkspaceId, new AddWorkspaceMemberRequest(" A@B.com ", "operator"), default);
 
             Assert.Equal(201, Assert.IsType<ObjectResult>(result).StatusCode);
             Assert.Equal("a@b.com", members.LastAddedEmail);
-            Assert.Equal("mapper", members.LastAddedRole);
+            Assert.Equal("operator", members.LastAddedRole);
         }
 
         [Fact]

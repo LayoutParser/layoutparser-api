@@ -70,6 +70,7 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>Dispara o job assíncrono de compilação — nunca bloqueia esperando a transpilação.</summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         [HttpPost("mapping-drafts/{draftId:guid}/compile")]
         public async Task<IActionResult> Compile(Guid workspaceId, Guid draftId, CancellationToken cancellationToken)
         {
@@ -101,6 +102,7 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>Status observável do job de compilação — não é fire-and-forget cego.</summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("mapping-drafts/{draftId:guid}/compile/{jobId:guid}")]
         public async Task<IActionResult> GetCompileJob(Guid workspaceId, Guid draftId, Guid jobId, CancellationToken cancellationToken)
         {
@@ -119,6 +121,7 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>Consulta a release compilada — artefatos, diagnósticos de compilação e resultado do Fiscal Test Lab, se já executado.</summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("mapping-drafts/{draftId:guid}/releases/{releaseId:guid}")]
         public async Task<IActionResult> GetRelease(Guid workspaceId, Guid draftId, Guid releaseId, CancellationToken cancellationToken)
         {
@@ -140,6 +143,7 @@ namespace LayoutParserApi.Controllers
         /// <see cref="MappingTestRunSummaryExtensions.GroupDivergencesByRule"/> (issue #367), mas
         /// agrupando por nome de elemento em vez de por regra.
         /// </summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("mapping-drafts/{draftId:guid}/releases/diff")]
         public async Task<IActionResult> DiffReleases(
             Guid workspaceId, Guid draftId, [FromQuery] Guid fromReleaseId, [FromQuery] Guid toReleaseId, CancellationToken cancellationToken)
@@ -232,7 +236,7 @@ namespace LayoutParserApi.Controllers
         /// → 400; divergente do hash atual → 412 com <c>current</c>. <b>Sem 401</b> (identidade vem do BFF).
         /// </remarks>
         [HttpPatch("mapping-drafts/{draftId:guid}/artifacts/{engine}")]
-        [RequireWorkspaceRole(WorkspaceRole.Mapper, WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         public async Task<IActionResult> UpdateArtifact(Guid workspaceId, Guid draftId, string engine, [FromBody] UpdateArtifactRequest request, CancellationToken cancellationToken)
         {
             if (_currentUser.UserId is not Guid userId)
@@ -312,6 +316,7 @@ namespace LayoutParserApi.Controllers
         /// slice: o job conclui com <c>RequiredGatesPassed=false</c> e diagnóstico explícito (nunca
         /// finge sucesso).
         /// </summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         [HttpPost("mapping-drafts/{draftId:guid}/test-runs")]
         public async Task<IActionResult> CreateTestRun(Guid workspaceId, Guid draftId, [FromBody] CreateTestRunRequest request, CancellationToken cancellationToken)
         {
@@ -354,6 +359,7 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>Status observável do job de test-run.</summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("mapping-drafts/{draftId:guid}/test-runs/{jobId:guid}")]
         public async Task<IActionResult> GetTestRunJob(Guid workspaceId, Guid draftId, Guid jobId, CancellationToken cancellationToken)
         {

@@ -38,7 +38,7 @@ namespace LayoutParserApi.Controllers
         /// <c>tbMapper</c> → 404 também (indistinguível, mesmo padrão fail-closed do resto da API).
         /// </summary>
         [HttpGet("layout-tree")]
-        [RequireWorkspaceRole(WorkspaceRole.Owner, WorkspaceRole.FiscalAdmin, WorkspaceRole.Mapper, WorkspaceRole.Reviewer, WorkspaceRole.Operator, WorkspaceRole.Viewer)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         public async Task<IActionResult> GetLayoutTree(Guid workspaceId, string mappingId, CancellationToken cancellationToken)
         {
             try

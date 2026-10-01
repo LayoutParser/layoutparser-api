@@ -44,7 +44,7 @@ namespace LayoutParserApi.Controllers
         /// <response code="501">Engine válido sem adaptador registrado.</response>
         /// <response code="503">Catálogo de mappers indisponível.</response>
         [HttpGet("studio-model")]
-        [RequireWorkspaceRole(WorkspaceRole.Owner, WorkspaceRole.FiscalAdmin, WorkspaceRole.Mapper, WorkspaceRole.Reviewer, WorkspaceRole.Operator, WorkspaceRole.Viewer)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         public async Task<IActionResult> GetStudioModel(Guid workspaceId, string mapperGuid, [FromQuery] string? engine, CancellationToken cancellationToken)
         {
             try

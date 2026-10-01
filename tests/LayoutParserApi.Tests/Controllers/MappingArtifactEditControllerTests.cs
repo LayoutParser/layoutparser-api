@@ -540,8 +540,6 @@ namespace LayoutParserApi.Tests.Controllers
         }
 
         [Theory]
-        [InlineData(WorkspaceRole.Reviewer)]
-        [InlineData(WorkspaceRole.Operator)]
         [InlineData(WorkspaceRole.Viewer)]
         public async Task RequireWorkspaceRole_papel_insuficiente_para_editar_artefato_retorna_403(string roleInsuficiente)
         {
@@ -550,7 +548,7 @@ namespace LayoutParserApi.Tests.Controllers
             var workspaceStore = new FakeIdentityWorkspaceStore();
             workspaceStore.Memberships[(workspaceId, userId)] = roleInsuficiente;
             var currentUser = new FakeCurrentUser { UserId = userId };
-            var filter = new RequireWorkspaceRoleFilter(new[] { WorkspaceRole.Mapper, WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner }, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
+            var filter = new RequireWorkspaceRoleFilter(WorkspaceRoleLevel.Operator, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
 
             var result = await RunFilterAsync(filter, workspaceId);
 
@@ -560,6 +558,8 @@ namespace LayoutParserApi.Tests.Controllers
 
         [Theory]
         [InlineData(WorkspaceRole.Mapper)]
+        [InlineData(WorkspaceRole.Reviewer)]
+        [InlineData(WorkspaceRole.Operator)]
         [InlineData(WorkspaceRole.FiscalAdmin)]
         [InlineData(WorkspaceRole.Owner)]
         public async Task RequireWorkspaceRole_papel_suficiente_para_editar_artefato_deixa_passar(string roleSuficiente)
@@ -569,7 +569,7 @@ namespace LayoutParserApi.Tests.Controllers
             var workspaceStore = new FakeIdentityWorkspaceStore();
             workspaceStore.Memberships[(workspaceId, userId)] = roleSuficiente;
             var currentUser = new FakeCurrentUser { UserId = userId };
-            var filter = new RequireWorkspaceRoleFilter(new[] { WorkspaceRole.Mapper, WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner }, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
+            var filter = new RequireWorkspaceRoleFilter(WorkspaceRoleLevel.Operator, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
 
             var result = await RunFilterAsync(filter, workspaceId);
 
@@ -583,7 +583,7 @@ namespace LayoutParserApi.Tests.Controllers
             var userId = Guid.NewGuid();
             var workspaceStore = new FakeIdentityWorkspaceStore();
             var currentUser = new FakeCurrentUser { UserId = userId };
-            var filter = new RequireWorkspaceRoleFilter(new[] { WorkspaceRole.Mapper, WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner }, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
+            var filter = new RequireWorkspaceRoleFilter(WorkspaceRoleLevel.Operator, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
 
             var result = await RunFilterAsync(filter, workspaceId);
 

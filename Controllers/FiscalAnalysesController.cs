@@ -17,7 +17,7 @@ namespace LayoutParserApi.Controllers
     /// </summary>
     [ApiController]
     [Route("api/workspaces/{workspaceId:guid}/analyses")]
-    [RequireWorkspaceRole(WorkspaceRole.Owner, WorkspaceRole.FiscalAdmin, WorkspaceRole.Mapper, WorkspaceRole.Reviewer, WorkspaceRole.Operator, WorkspaceRole.Viewer)]
+    [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
     public class FiscalAnalysesController : ControllerBase
     {
         private const int DefaultPageSize = 20;
@@ -165,6 +165,7 @@ namespace LayoutParserApi.Controllers
         /// <response code="404">Análise inexistente ou de outro usuário.</response>
         /// <response code="503">Banco de identidade indisponível.</response>
         [ServiceFilter(typeof(AuditActionFilter))]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         [HttpDelete("{analysisId:guid}")]
         public async Task<IActionResult> Delete(Guid workspaceId, Guid analysisId, CancellationToken cancellationToken)
         {

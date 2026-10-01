@@ -14,6 +14,39 @@ namespace LayoutParserApi.Models.Entities.Identity
         public const string Reviewer = "reviewer";
         public const string Operator = "operator";
         public const string Viewer = "viewer";
+
+        /// <summary>
+        /// Nível hierárquico do papel: viewer(1) &lt; operator(2) &lt; fiscal_admin(3) &lt; owner(4).
+        /// Legados <c>mapper</c>/<c>reviewer</c> valem nível Operador. Papel desconhecido/nulo =&gt; 0 (nega, nunca eleva).
+        /// </summary>
+        public static WorkspaceRoleLevel LevelOf(string? role) => role?.Trim().ToLowerInvariant() switch
+        {
+            Owner => WorkspaceRoleLevel.Owner,
+            FiscalAdmin => WorkspaceRoleLevel.Admin,
+            Operator or Mapper or Reviewer => WorkspaceRoleLevel.Operator,
+            Viewer => WorkspaceRoleLevel.Viewer,
+            _ => WorkspaceRoleLevel.None
+        };
+
+        /// <summary>True se o papel tem nível &gt;= ao mínimo exigido.</summary>
+        public static bool AtLeast(string? role, WorkspaceRoleLevel min) => LevelOf(role) >= min && min > WorkspaceRoleLevel.None;
+
+        /// <summary>Id canônico: legados (mapper/reviewer) viram <c>operator</c>; demais em minúsculas; desconhecido volta como veio.</summary>
+        public static string Canonical(string? role)
+        {
+            var r = role?.Trim().ToLowerInvariant();
+            return r is Mapper or Reviewer ? Operator : (r ?? string.Empty);
+        }
+    }
+
+    /// <summary>Níveis de papel de workspace (RBAC de 4 papéis, 2026-10-01).</summary>
+    public enum WorkspaceRoleLevel
+    {
+        None = 0,
+        Viewer = 1,
+        Operator = 2,
+        Admin = 3,
+        Owner = 4
     }
 
     /// <summary>
