@@ -51,7 +51,8 @@ namespace LayoutParserApi.Models.Dtos.Fiscal
         IReadOnlyList<EvidenceRef> Evidence,
         string HumanDescription,
         string? TechnicalDetail,
-        string SupportLevel);
+        string SupportLevel,
+        IReadOnlyList<string>? Functions = null);
 
     /// <summary>
     /// Contrato canônico de explicação de mapeamento (Slice 4 — issue #226/#227), independente do

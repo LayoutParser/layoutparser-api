@@ -1,8 +1,11 @@
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 using LayoutParserApi.Models.Dtos.Fiscal;
 using LayoutParserApi.Models.Entities;
 using LayoutParserApi.Services.Interfaces;
+using LayoutParserApi.Services.StudioModel.Sysmiddle;
+using LayoutParserApi.Services.Sysmiddle;
 
 using XslSynth.Core;
 
@@ -50,12 +53,24 @@ namespace LayoutParserApi.Services.Fiscal
 
         private readonly ICachedMapperService _cachedMapperService;
         private readonly ILogger<SysmiddleExplanationAdapter> _logger;
+        private readonly ISysmiddleFunctionCatalog _functions;
 
-        public SysmiddleExplanationAdapter(ICachedMapperService cachedMapperService, ILogger<SysmiddleExplanationAdapter> logger)
+        // Catálogo opcional: sem ele (testes/legado) só os builtins são conhecidos.
+        private static readonly Lazy<ISysmiddleFunctionCatalog> DefaultCatalog = new(() => SysmiddleFunctionCatalog.BuiltinOnly());
+
+        public SysmiddleExplanationAdapter(ICachedMapperService cachedMapperService, ILogger<SysmiddleExplanationAdapter> logger,
+            ISysmiddleFunctionCatalog? functionCatalog = null)
         {
             _cachedMapperService = cachedMapperService;
             _logger = logger;
+            _functions = functionCatalog ?? DefaultCatalog.Value;
         }
+
+        /// <summary>Função traduzível: dispatcher conhecido ou builtin do catálogo.</summary>
+        private bool IsTranslatable(string f) =>
+            KnownFunctions.Contains(f) || _functions.Lookup(f)?.Origin == SysmiddleFunctionCatalog.OriginBuiltin;
+
+        private bool IsNdd(string f) => _functions.Lookup(f)?.Origin == SysmiddleFunctionCatalog.OriginNddCustom;
 
         /// <summary>
         /// Dependência real: catálogo de mappers Sysmiddle (<see cref="ICachedMapperService"/>, por
@@ -178,7 +193,7 @@ namespace LayoutParserApi.Services.Fiscal
         /// por ramo da árvore de decisão (<see cref="StructuredBranch"/>), já que cada ramo tem
         /// condição/origem/destino próprios.
         /// </summary>
-        private static IEnumerable<ExplainedRule> ToExplainedRules(MapperRule rule)
+        private IEnumerable<ExplainedRule> ToExplainedRules(MapperRule rule)
         {
             XslSynth.Prompting.StructuredRule? structured;
             try
@@ -193,13 +208,13 @@ namespace LayoutParserApi.Services.Fiscal
             if (structured == null)
             {
                 // DSL fora do subconjunto reconhecido — nunca inventa, marca como opaque inteira.
-                yield return OpaqueRuleFallback(rule);
+                yield return ExplainUnstructuredRule(rule);
                 yield break;
             }
 
             if (structured.Branches.Count == 0)
             {
-                yield return OpaqueRuleFallback(rule);
+                yield return ExplainUnstructuredRule(rule);
                 yield break;
             }
 
@@ -207,7 +222,7 @@ namespace LayoutParserApi.Services.Fiscal
             {
                 var branch = structured.Branches[i];
                 var ruleId = (rule.ElementGuid ?? rule.Name ?? "rule") + $":{i}";
-                var unknownFunctions = branch.Functions.Where(f => !KnownFunctions.Contains(f)).ToList();
+                var unknownFunctions = branch.Functions.Where(f => !IsTranslatable(f)).ToList();
                 var supportLevel = unknownFunctions.Count > 0
                     ? MappingExplanationSupportLevel.Opaque
                     : MappingExplanationSupportLevel.Authoritative;
@@ -223,37 +238,88 @@ namespace LayoutParserApi.Services.Fiscal
                     Operations: operations,
                     Cardinality: structured.LoopType is null ? "1:1" : "1:N",
                     Evidence: new[] { new EvidenceRef("sysmiddle-rule", rule.Name ?? ruleId) },
-                    HumanDescription: DescribeBranch(rule, branch, condition),
+                    HumanDescription: DescribeBranch(branch, condition, unknownFunctions),
                     TechnicalDetail: Truncate(rule.ContentValue),
-                    SupportLevel: supportLevel);
+                    SupportLevel: supportLevel,
+                    Functions: branch.Functions.Count > 0 ? branch.Functions.ToList() : null);
             }
         }
 
-        private static ExplainedRule OpaqueRuleFallback(MapperRule rule)
+        private static readonly Regex TempAssign = new(
+            @"(?<![\w.])[#$]\.(?<t>\w+)\s*=\s*I\.(?<p>[@\w]+(?:/[@\w\-]+)*)\s*;", RegexOptions.Compiled);
+        private static readonly Regex HasIf = new(@"\bif\s*\(", RegexOptions.Compiled);
+
+        /// <summary>
+        /// Regra sem ramo <c>T.</c> reconhecido (só variáveis temporárias, chamadas soltas, laços...).
+        /// Em vez do texto genérico: varre atribuições <c>#.campo = I.caminho</c>, blocos if/else e
+        /// funções usadas. Com função NDD/não catalogada → <c>opaque</c> + <c>functions[]</c> + "usa função NDD X";
+        /// só atribuições/condicionais com builtins → <c>best_effort</c>; senão mantém o texto genérico.
+        /// </summary>
+        private ExplainedRule ExplainUnstructuredRule(MapperRule rule)
         {
             var ruleId = rule.ElementGuid ?? rule.Name ?? Guid.NewGuid().ToString();
+            var code = (rule.ContentValue ?? "")
+                .Replace("%beginRuleContent;", "").Replace("%endRuleContent;", "")
+                .Replace("&amp;", "&").Replace("&gt;", ">").Replace("&lt;", "<");
+            var scan = RuleCodeScanner.Scan(code);
+            var scanFailed = scan.Opaque.Any(o => o.Reason == "scan-failed");
+            var functions = scan.Functions;
+            var targets = scan.Writes.Select(w => $"T.{w}").ToList();
+            if (targets.Count == 0 && rule.TargetPath is not null) targets.Add($"T.{rule.TargetPath}");
+            var temps = TempAssign.Matches(code).Select(m => (Temp: m.Groups["t"].Value, Src: m.Groups["p"].Value)).ToList();
+            var hasIf = HasIf.IsMatch(code);
+            var nonTranslatable = functions.Where(f => !IsTranslatable(f)).ToList();
+            var hasLoop = scan.Opaque.Any(o => o.Reason is "loop" or "csharp-new");
+
+            string description, level;
+            if (!scanFailed && nonTranslatable.Count > 0)
+            {
+                level = MappingExplanationSupportLevel.Opaque;
+                var ndd = nonTranslatable.Where(IsNdd).ToList();
+                var others = nonTranslatable.Except(ndd).ToList();
+                var parts = new List<string>();
+                if (ndd.Count > 0) parts.Add($"usa função NDD {string.Join(", ", ndd)}");
+                if (others.Count > 0) parts.Add($"usa função não catalogada {string.Join(", ", others)}");
+                description = "Regra que " + string.Join("; ", parts) + ".";
+            }
+            else if (!scanFailed && !hasLoop && (temps.Count > 0 || hasIf) && scan.Writes.Count == 0)
+            {
+                level = MappingExplanationSupportLevel.BestEffort;
+                var tempText = temps.Count > 0
+                    ? "Calcula variável(is) interna(s): " + string.Join("; ", temps.Select(t => $"#.{t.Temp} = I.{t.Src}")) + "."
+                    : "Avalia condições (if/else) sobre valores do documento, sem escrever no destino.";
+                description = tempText + (hasIf && temps.Count > 0 ? " Contém blocos if/else." : "");
+            }
+            else
+            {
+                level = MappingExplanationSupportLevel.Opaque;
+                description = "Regra reconhecida no mapper, mas fora da gramática DSL suportada por este explicador.";
+            }
+
             return new ExplainedRule(
                 RuleId: ruleId,
-                SourceRefs: Array.Empty<string>(),
-                TargetRefs: rule.TargetPath is null ? Array.Empty<string>() : new[] { $"T.{rule.TargetPath}" },
+                SourceRefs: scan.Reads.Select(r => $"I.{r}").ToList(),
+                TargetRefs: targets,
                 Condition: null,
-                Operations: Array.Empty<string>(),
+                Operations: functions.Count > 0 ? functions.ToList() : Array.Empty<string>(),
                 Cardinality: "1:1",
                 Evidence: new[] { new EvidenceRef("sysmiddle-rule", rule.Name ?? ruleId) },
-                HumanDescription: "Regra reconhecida no mapper, mas fora da gramática DSL suportada por este explicador.",
+                HumanDescription: description,
                 TechnicalDetail: Truncate(rule.ContentValue),
-                SupportLevel: MappingExplanationSupportLevel.Opaque);
+                SupportLevel: level,
+                Functions: functions.Count > 0 ? functions.ToList() : null);
         }
 
-        private static string DescribeBranch(MapperRule rule, XslSynth.Prompting.StructuredBranch branch, string? condition)
+        private string DescribeBranch(XslSynth.Prompting.StructuredBranch branch, string? condition, IReadOnlyList<string> nonTranslatable)
         {
             var sourcesText = branch.Sources.Count == 0 ? "um valor calculado" : string.Join(", ", branch.Sources);
             var basis = condition is null
                 ? $"Preenche \"{branch.Target}\" a partir de {sourcesText}."
                 : $"Quando {condition}, preenche \"{branch.Target}\" a partir de {sourcesText}.";
-            return branch.Functions.Count == 0
-                ? basis
-                : basis + $" Usa a(s) função(ões): {string.Join(", ", branch.Functions)}.";
+            if (branch.Functions.Count == 0) return basis;
+            var text = basis + $" Usa a(s) função(ões): {string.Join(", ", branch.Functions)}.";
+            var ndd = nonTranslatable.Where(IsNdd).ToList();
+            return ndd.Count == 0 ? text : text + $" Usa função NDD {string.Join(", ", ndd)}.";
         }
 
         /// <summary>Trecho técnico truncado — nunca payload fiscal real, só a DSL/configuração da regra.</summary>
