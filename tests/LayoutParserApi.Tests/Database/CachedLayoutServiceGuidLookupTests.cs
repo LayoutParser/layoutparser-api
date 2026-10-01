@@ -42,6 +42,15 @@ namespace LayoutParserApi.Tests.Database
             };
 
             public LayoutSearchRequest? LastRequest { get; private set; }
+            public string? LastGuidLookup { get; private set; }
+
+            // Busca real por GUID (a busca por nome/SearchTerm nunca achava o layout de destino).
+            public Task<LayoutRecord?> GetLayoutByGuidAsync(string layoutGuid)
+            {
+                LastGuidLookup = layoutGuid;
+                return Task.FromResult<LayoutRecord?>(
+                    layoutGuid.EndsWith(XmlTargetLayout.LayoutGuid.ToString(), StringComparison.OrdinalIgnoreCase) ? XmlTargetLayout : null);
+            }
 
             public Task<LayoutSearchResponse> SearchLayoutsAsync(LayoutSearchRequest request)
             {
@@ -85,10 +94,27 @@ namespace LayoutParserApi.Tests.Database
             Assert.NotNull(result);
             Assert.Equal("Layout de destino (XML)", result!.Name);
 
-            // Trava a causa raiz: o fallback de banco PRECISA pedir todos os tipos, senão o
-            // layout XML de destino volta a ser filtrado silenciosamente (regressão do #433).
-            Assert.NotNull(db.LastRequest);
-            Assert.True(db.LastRequest!.IncludeAllLayoutTypes);
+            // Trava a causa raiz: o fallback precisa buscar por GUID real, nao por SearchTerm (nome).
+            Assert.Equal(db.XmlTargetLayout.LayoutGuid.ToString(), db.LastGuidLookup);
+            Assert.Null(db.LastRequest);
+        }
+
+        [Theory]
+        [InlineData("11111111-1111-1111-1111-111111111111")]
+        [InlineData("LAY_11111111-1111-1111-1111-111111111111")]
+        [InlineData("{11111111-1111-1111-1111-111111111111}")]
+        public void BuildGuidLookupQuery_ParametrizaGuidComESemPrefixo_SemFiltroDeProjeto(string entrada)
+        {
+            var (sql, parametros) = LayoutDatabaseService.BuildGuidLookupQuery(entrada);
+
+            Assert.Equal("11111111-1111-1111-1111-111111111111", parametros["@Guid"]);
+            Assert.Equal("LAY_11111111-1111-1111-1111-111111111111", parametros["@GuidPrefixado"]);
+            Assert.Contains("IN (@Guid, @GuidPrefixado)", sql);
+            Assert.DoesNotContain("[ProjectId] =", sql);
+            Assert.DoesNotContain("LIKE", sql);
+            Assert.DoesNotContain("11111111", sql); // valor nunca concatenado no SQL
+            Assert.DoesNotContain("INSERT", sql, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("UPDATE ", sql, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

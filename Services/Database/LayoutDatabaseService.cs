@@ -204,6 +204,93 @@ namespace LayoutParserApi.Services.Database
             }
         }
 
+        /// <summary>
+        /// Monta a query/parametros da busca por GUID (testavel, sem I/O). Compara via CAST para texto:
+        /// funciona se a coluna for uniqueidentifier OU varchar, e evita erro de conversao com "LAY_".
+        /// Somente leitura, parametrizada, sem filtro de ProjectId.
+        /// </summary>
+        public static (string Sql, IReadOnlyDictionary<string, string> Parameters) BuildGuidLookupQuery(string layoutGuid)
+        {
+            var raw = (layoutGuid ?? string.Empty).Trim().Trim('{', '}');
+            if (raw.StartsWith("LAY_", StringComparison.OrdinalIgnoreCase))
+                raw = raw.Substring(4);
+
+            const string sql = @"
+                SELECT TOP (1)
+                    [Id], [LayoutGuid], [PackageGuid], [Name], [Description],
+                    [LayoutType], [ValueContent], [XmlShemaValidatorPath],
+                    [ProjectId], [LastUpdateDate]
+                FROM [ConnectUS_Macgyver].[dbo].[tbLayout] WITH (NOLOCK)
+                WHERE CAST([LayoutGuid] AS NVARCHAR(64)) IN (@Guid, @GuidPrefixado)
+                ORDER BY [LastUpdateDate] DESC";
+
+            return (sql, new Dictionary<string, string>
+            {
+                ["@Guid"] = raw,
+                ["@GuidPrefixado"] = "LAY_" + raw
+            });
+        }
+
+        public async Task<LayoutRecord?> GetLayoutByGuidAsync(string layoutGuid)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(layoutGuid))
+                    return null;
+
+                var (query, parameters) = BuildGuidLookupQuery(layoutGuid);
+                using var connection = new SqlConnection(_connectionString);
+                await connection.OpenAsync();
+                using var command = new SqlCommand(query, connection);
+                foreach (var kv in parameters)
+                    command.Parameters.AddWithValue(kv.Key, kv.Value);
+
+                using var reader = await command.ExecuteReaderAsync();
+                if (!await reader.ReadAsync())
+                {
+                    _logger.LogWarning("Layout nao encontrado no banco por GUID: {Guid}", layoutGuid);
+                    return null;
+                }
+
+                var layout = new LayoutRecord
+                {
+                    Id = reader.IsDBNull(0) ? 0 : reader.GetInt32(0),
+                    LayoutGuid = reader.IsDBNull(1) ? Guid.Empty : SafeParseGuid(SafeGetString(reader, 1)),
+                    PackageGuid = reader.IsDBNull(2) ? Guid.Empty : SafeParseGuid(SafeGetString(reader, 2)),
+                    Name = SafeGetString(reader, 3),
+                    Description = reader.IsDBNull(4) ? "" : SafeGetString(reader, 4),
+                    LayoutType = reader.IsDBNull(5) ? "" : SafeGetString(reader, 5),
+                    ValueContent = reader.IsDBNull(6) ? "" : SafeGetString(reader, 6),
+                    XmlShemaValidatorPath = reader.IsDBNull(7) ? "" : SafeGetString(reader, 7),
+                    ProjectId = reader.IsDBNull(8) ? 0 : reader.GetInt32(8),
+                    LastUpdateDate = reader.IsDBNull(9) ? DateTime.MinValue : reader.GetDateTime(9)
+                };
+
+                if (!string.IsNullOrEmpty(layout.ValueContent))
+                {
+                    try
+                    {
+                        layout.DecryptedContent = await _decryptionService.DecryptContentAsync(layout.ValueContent);
+                        ExtractLayoutGuidFromDecryptedContent(layout);
+                    }
+                    catch (DecryptionException ex)
+                    {
+                        _logger.LogWarning(ex, "Falha ao descriptografar layout {Id} ({Name}) buscado por GUID.", layout.Id, layout.Name);
+                        layout.DecryptedContent = "";
+                    }
+                }
+                else
+                    layout.DecryptedContent = "";
+
+                return layout;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Falha ao buscar layout por GUID no banco: {Guid}", layoutGuid);
+                return null;
+            }
+        }
+
         public async Task<LayoutRecord?> GetLayoutByIdAsync(int id)
         {
             try

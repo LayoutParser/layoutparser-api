@@ -125,36 +125,15 @@ namespace LayoutParserApi.Services.Database
                     }
                 }
 
-                // Se não encontrou no cache, buscar no banco usando SearchLayoutsAsync
-                // Issue #433: busca por GUID específico precisa achar QUALQUER tipo de layout
-                // (ex.: XmlLayoutVO de destino) — o filtro TextPositional-only é só para o
-                // warmup do cache Redis (ver LayoutSearchRequest.IncludeAllLayoutTypes).
-                _logger.LogInformation("Layout não encontrado no cache, buscando no banco por GUID: {Guid}", layoutGuid);
-                var request = new LayoutSearchRequest
+                // Issue #433: SearchLayoutsAsync filtra por [Name] LIKE e ProjectId=2 (busca por nome,
+                // nunca por GUID). Aqui vai uma consulta real por LayoutGuid, qualquer tipo/projeto.
+                _logger.LogInformation("Layout nao encontrado no cache, buscando no banco por GUID: {Guid}", layoutGuid);
+                var dbLayout = await _layoutDatabaseService.GetLayoutByGuidAsync(layoutGuid);
+                if (dbLayout != null)
                 {
-                    SearchTerm = layoutGuid,
-                    MaxResults = 100,
-                    IncludeAllLayoutTypes = true
-                };
-
-                var response = await _layoutDatabaseService.SearchLayoutsAsync(request);
-                if (response.Success && response.Layouts.Any())
-                {
-                    // Buscar layout que corresponde ao GUID
-                    var layout = response.Layouts.FirstOrDefault(l =>
-                    {
-                        var layoutGuidStr = l.LayoutGuid != Guid.Empty ? l.LayoutGuid.ToString() : "";
-                        var normalizedLayoutGuid = NormalizeLayoutGuid(layoutGuidStr);
-                        return GuidMatches(normalizedLayoutGuid, normalizedGuid) || GuidMatches(normalizedLayoutGuid, layoutGuid);
-                    });
-
-                    if (layout != null)
-                    {
-                        _logger.LogInformation("Layout encontrado no banco por GUID: {Name} (GUID: {Guid})", layout.Name, layoutGuid);
-                        // Atualizar cache
-                        await _cacheService.SetCachedLayoutByIdAsync(layout.Id, layout);
-                        return layout;
-                    }
+                    _logger.LogInformation("Layout encontrado no banco por GUID: {Name} (GUID: {Guid})", dbLayout.Name, layoutGuid);
+                    await _cacheService.SetCachedLayoutByIdAsync(dbLayout.Id, dbLayout);
+                    return dbLayout;
                 }
 
                 _logger.LogWarning("Layout nao encontrado por GUID: {Guid}", layoutGuid);
