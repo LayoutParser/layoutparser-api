@@ -113,5 +113,9 @@ namespace LayoutParserApi.Models.Dtos.StudioModel
         List<string>? Ids = null,
         List<string>? Missing = null,
         List<string>? LinkIds = null,
-        string? XsiType = null);
+        string? XsiType = null,
+        int[]? Span = null,
+        string? Suggestion = null,
+        string? RuleId = null,
+        string? WinnerId = null);
 }
