@@ -1,3 +1,4 @@
+using LayoutParserApi.Models.Dtos.Fiscal;
 using LayoutParserApi.Models.Database;
 using LayoutParserApi.Models.Entities;
 using LayoutParserApi.Services.Fiscal;
@@ -233,6 +234,62 @@ namespace LayoutParserApi.Tests.Fiscal
             Assert.NotNull(result);
             Assert.NotEmpty(result!.Source.Roots);
             Assert.Empty(result.Target.Roots);
+        }
+
+        private static async Task<LayoutTreeSide> TargetComAsync(string? targetGuid, string? targetXml)
+        {
+            var (service, mappers, layouts) = BuildService();
+            mappers.Mappers.Add(new Mapper
+            {
+                MapperGuid = "MAP_R",
+                InputLayoutGuid = "LAY_SOURCE",
+                TargetLayoutGuid = targetGuid,
+                DecryptedContent = BuildMapperXml("MAP_R"),
+            });
+            layouts.LayoutsByGuid["LAY_SOURCE"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Origem", DecryptedContent = SourceLayoutXml };
+            if (targetGuid != null && targetXml != null)
+                layouts.LayoutsByGuid[targetGuid] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Destino", DecryptedContent = targetXml };
+            var result = await service.GetLayoutTreeAsync("MAP_R", CancellationToken.None);
+            return result!.Target;
+        }
+
+        [Fact]
+        public async Task Caso_feliz_nao_tem_UnavailableReason()
+        {
+            var t = await TargetComAsync("LAY_TARGET", TargetLayoutXml);
+            Assert.Null(t.UnavailableReason);
+            Assert.Equal("xml", t.Kind);
+        }
+
+        [Fact]
+        public async Task Layout_nao_encontrado_ou_guid_ausente_gera_layout_not_found()
+        {
+            Assert.Equal("layout-not-found", (await TargetComAsync("LAY_X", null)).UnavailableReason);
+            Assert.Equal("layout-not-found", (await TargetComAsync(null, null)).UnavailableReason);
+        }
+
+        [Fact]
+        public async Task Xml_ilegivel_gera_layout_unreadable()
+        {
+            var t = await TargetComAsync("LAY_BAD", "<Layout><nao fechado");
+            Assert.Equal("layout-unreadable", t.UnavailableReason);
+            Assert.Equal("unknown", t.Kind);
+        }
+
+        [Fact]
+        public async Task Tipo_sem_leitor_gera_unsupported_kind()
+        {
+            var t = await TargetComAsync("LAY_J", "<Layout xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"JsonLayoutVO\"><LayoutGuid>LAY_J</LayoutGuid></Layout>");
+            Assert.Equal("unsupported-kind", t.UnavailableReason);
+        }
+
+        [Fact]
+        public async Task Xml_sem_nos_materializaveis_gera_xsd_unresolved()
+        {
+            var t = await TargetComAsync("LAY_XSD", "<Layout xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"XmlLayoutVO\"><LayoutGuid>LAY_XSD</LayoutGuid></Layout>");
+            Assert.Equal("xml", t.Kind);
+            Assert.Empty(t.Roots);
+            Assert.Equal("xsd-unresolved", t.UnavailableReason);
         }
     }
 }
