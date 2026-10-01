@@ -76,7 +76,7 @@ namespace LayoutParserApi.Services.Fiscal
             if (string.IsNullOrWhiteSpace(layoutGuid))
             {
                 _logger.LogWarning("Árvore de layout: LayoutGuid ausente no mapper — lado degrada para árvore vazia.");
-                return new LayoutTreeSide(null, "unknown", Array.Empty<LayoutTreeNodeDto>());
+                return new LayoutTreeSide(null, LayoutTreeKinds.Unknown, Array.Empty<LayoutTreeNodeDto>(), LayoutTreeUnavailableReasons.LayoutNotFound);
             }
 
             Models.Database.LayoutRecord? layoutRecord;
@@ -87,39 +87,49 @@ namespace LayoutParserApi.Services.Fiscal
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Árvore de layout: falha ao buscar layout {LayoutGuid} — lado degrada para árvore vazia.", layoutGuid);
-                return new LayoutTreeSide(layoutGuid, "unknown", Array.Empty<LayoutTreeNodeDto>());
+                return new LayoutTreeSide(layoutGuid, LayoutTreeKinds.Unknown, Array.Empty<LayoutTreeNodeDto>(), LayoutTreeUnavailableReasons.LayoutNotFound);
             }
 
             if (layoutRecord == null)
             {
                 _logger.LogWarning("Árvore de layout: layout {LayoutGuid} não encontrado — lado degrada para árvore vazia.", layoutGuid);
-                return new LayoutTreeSide(layoutGuid, "unknown", Array.Empty<LayoutTreeNodeDto>());
+                return new LayoutTreeSide(layoutGuid, LayoutTreeKinds.Unknown, Array.Empty<LayoutTreeNodeDto>(), LayoutTreeUnavailableReasons.LayoutNotFound);
             }
 
             var (resolvedLayoutGuid, roots) = GuidXPathCatalog.BuildTree(
                 layoutRecord.DecryptedContent, sourceLabel: layoutRecord.Name, log: msg => _logger.LogInformation("{Msg}", msg));
 
-            var kind = DetectKind(layoutRecord.DecryptedContent);
-            return new LayoutTreeSide(resolvedLayoutGuid ?? layoutGuid, kind, ToDto(roots));
+            var (kind, legivel) = DetectKind(layoutRecord.DecryptedContent);
+            var dtoRoots = ToDto(roots);
+
+            // Motivo explícito quando a árvore não pôde ser materializada (campo opcional, 200 mantido).
+            string? motivo = null;
+            if (!legivel) motivo = LayoutTreeUnavailableReasons.LayoutUnreadable;
+            else if (kind == LayoutTreeKinds.Unknown) motivo = LayoutTreeUnavailableReasons.UnsupportedKind;
+            else if (dtoRoots.Count == 0)
+                motivo = kind == LayoutTreeKinds.Xml ? LayoutTreeUnavailableReasons.XsdUnresolved : LayoutTreeUnavailableReasons.LayoutUnreadable;
+
+            return new LayoutTreeSide(resolvedLayoutGuid ?? layoutGuid, kind, dtoRoots, motivo);
         }
 
-        /// <summary>Lê o <c>xsi:type</c> da raiz do LayoutVO ("TextLayoutVO"/"XmlLayoutVO") — mesma convenção do ADR.</summary>
-        private static string DetectKind(string? xmlContent)
+        /// <summary>Lê o <c>xsi:type</c> da raiz do LayoutVO ("TextLayoutVO"/"XmlLayoutVO"); <c>Legivel=false</c> se vazio/XML inválido.</summary>
+        private static (string Kind, bool Legivel) DetectKind(string? xmlContent)
         {
             if (string.IsNullOrWhiteSpace(xmlContent))
-                return "unknown";
+                return (LayoutTreeKinds.Unknown, false);
 
             try
             {
                 var root = XDocument.Parse(xmlContent).Root;
-                var tipo = (string?)root?.Attribute(XNamespace.Get("http://www.w3.org/2001/XMLSchema-instance") + "type") ?? "";
-                if (tipo.Contains("Text", StringComparison.OrdinalIgnoreCase)) return "text";
-                if (tipo.Contains("Xml", StringComparison.OrdinalIgnoreCase)) return "xml";
-                return "unknown";
+                if (root == null) return (LayoutTreeKinds.Unknown, false);
+                var tipo = (string?)root.Attribute(XNamespace.Get("http://www.w3.org/2001/XMLSchema-instance") + "type") ?? "";
+                if (tipo.Contains("Text", StringComparison.OrdinalIgnoreCase)) return (LayoutTreeKinds.Text, true);
+                if (tipo.Contains("Xml", StringComparison.OrdinalIgnoreCase)) return (LayoutTreeKinds.Xml, true);
+                return (LayoutTreeKinds.Unknown, true);
             }
             catch
             {
-                return "unknown";
+                return (LayoutTreeKinds.Unknown, false);
             }
         }
 

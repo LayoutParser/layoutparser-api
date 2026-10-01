@@ -16,8 +16,37 @@ namespace LayoutParserApi.Models.Dtos.Fiscal
         LayoutTreeCardinality? Cardinality,
         IReadOnlyList<LayoutTreeNodeDto> Children);
 
-    /// <summary>Uma das duas árvores (origem/destino) — layout resolvido, tipo (<c>text</c>/<c>xml</c>) e raízes.</summary>
-    public sealed record LayoutTreeSide(string? LayoutGuid, string Kind, IReadOnlyList<LayoutTreeNodeDto> Roots);
+    /// <summary>Domínio de <see cref="LayoutTreeSide.Kind"/> realmente emitido hoje (valores inalterados).</summary>
+    public static class LayoutTreeKinds
+    {
+        /// <summary>LayoutVO posicional (<c>TextLayoutVO</c>).</summary>
+        public const string Text = "text";
+        /// <summary>LayoutVO de XML (<c>XmlLayoutVO</c>).</summary>
+        public const string Xml = "xml";
+        /// <summary>Layout não resolvido ou de tipo sem leitor. (json/smartdb NÃO são emitidos hoje.)</summary>
+        public const string Unknown = "unknown";
+    }
+
+    /// <summary>Motivos de <see cref="LayoutTreeSide.UnavailableReason"/> (só quando a árvore não foi materializada).</summary>
+    public static class LayoutTreeUnavailableReasons
+    {
+        /// <summary>GUID ausente no mapper, layout fora do índice/banco ou falha na consulta.</summary>
+        public const string LayoutNotFound = "layout-not-found";
+        /// <summary>Layout XML sem nós materializáveis (árvore dependeria de XSD, ainda não derivada).</summary>
+        public const string XsdUnresolved = "xsd-unresolved";
+        /// <summary>Conteúdo do LayoutVO vazio, XML inválido ou sem elementos legíveis.</summary>
+        public const string LayoutUnreadable = "layout-unreadable";
+        /// <summary>Tipo de LayoutVO sem leitor (kind <c>unknown</c>).</summary>
+        public const string UnsupportedKind = "unsupported-kind";
+    }
+
+    /// <summary>
+    /// Uma das duas árvores (origem/destino) — layout resolvido, tipo e raízes.
+    /// <c>Kind</c> ∈ {<c>text</c>, <c>xml</c>, <c>unknown</c>} (ver <see cref="LayoutTreeKinds"/>).
+    /// <c>UnavailableReason</c> é opcional (omitido quando a árvore foi materializada) — ver
+    /// <see cref="LayoutTreeUnavailableReasons"/>.
+    /// </summary>
+    public sealed record LayoutTreeSide(string? LayoutGuid, string Kind, IReadOnlyList<LayoutTreeNodeDto> Roots, string? UnavailableReason = null);
 
     /// <summary>
     /// Vínculo direto campo→campo (<c>LinkMappingItemVO</c> real do Sysmiddle) entre um nó da
