@@ -66,3 +66,6 @@
 # Git hooks shell scripts must keep LF line endings (fail under CRLF on sh)
 ###############################################################################
 .githooks/* text eol=lf
+
+# Fixtures de teste dependem de LF (goldens byte-a-byte); evita CRLF no checkout Windows do runner
+tests/LayoutParserApi.Tests/Fixtures/** text eol=lf

@@ -16,7 +16,7 @@ namespace LayoutParserApi.Tests.StudioModel
         public const string TargetLayoutGuid = "LAY_00000000-0000-0000-0000-00000000a002";
 
         public static string Fixture(string name)
-            => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "StudioModel", name));
+            => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "StudioModel", name)).Replace("\r\n", "\n"); // normaliza EOL: checkout CRLF (Windows) nao pode alterar o golden
 
         public static string InputXml => Fixture("01-layout-entrada-txt.xml");
         public static string TargetXml => Fixture("02-layout-saida-xml.xml");
