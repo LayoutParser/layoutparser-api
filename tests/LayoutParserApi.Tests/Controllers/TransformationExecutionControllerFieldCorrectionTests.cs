@@ -101,7 +101,22 @@ namespace LayoutParserApi.Tests.Controllers
             }
         }
 
-        private static (TransformationExecutionController Controller, FakeFieldCorrectionStore Store, FakeCurrentUser User, string TrainingDataPath) BuildController()
+        private sealed class FakeWorkspaces : LayoutParserApi.Services.Interfaces.IIdentityWorkspaceService
+        {
+            public string Role { get; init; } = "viewer";
+            public Task<Guid?> ResolveOrCreateUserAsync(string provider, string? tenantOrIssuer, string subject, CancellationToken ct)
+                => throw new NotSupportedException();
+            public Task<LayoutParserApi.Services.Interfaces.WorkspaceMeResult> GetOrCreateMyWorkspacesAsync(Guid userId, CancellationToken ct)
+            {
+                var w = new LayoutParserApi.Services.Interfaces.WorkspaceSummary(Guid.NewGuid(), "WS", "shared", Role, DateTimeOffset.UtcNow);
+                return Task.FromResult(new LayoutParserApi.Services.Interfaces.WorkspaceMeResult(w.WorkspaceId, new[] { w }));
+            }
+            public Task<LayoutParserApi.Services.Interfaces.WorkspaceSummary?> GetWorkspaceForMemberAsync(Guid workspaceId, Guid userId, CancellationToken ct)
+                => throw new NotSupportedException();
+        }
+
+        private static (TransformationExecutionController Controller, FakeFieldCorrectionStore Store, FakeCurrentUser User, string TrainingDataPath) BuildController(
+            LayoutParserApi.Services.Interfaces.IIdentityWorkspaceService? identityWorkspaces = null)
         {
             var store = new FakeFieldCorrectionStore();
             var user = new FakeCurrentUser();
@@ -142,7 +157,8 @@ namespace LayoutParserApi.Tests.Controllers
                 canaryAlert: new LayoutParserApi.Services.Security.CanaryAlertService(
                     NullLogger<LayoutParserApi.Services.Security.CanaryAlertService>.Instance),
                 fieldCorrectionStore: store,
-                trainingDataCapture: trainingCapture);
+                trainingDataCapture: trainingCapture,
+                identityWorkspaces: identityWorkspaces);
 
             return (controller, store, user, trainingDataPath);
         }
@@ -264,6 +280,39 @@ namespace LayoutParserApi.Tests.Controllers
             Assert.Equal("001", input.ObservedValue);
             Assert.Equal("1", input.ExpectedValue);
             Assert.Equal(user.UserId, reportedBy);
+        }
+
+        [Fact]
+        public async Task ReportFieldCorrection_so_Leitor_retorna_403_e_nao_grava()
+        {
+            var (controller, store, _, _) = BuildController(new FakeWorkspaces { Role = "viewer" });
+            var request = new FieldCorrectionRequest
+            {
+                DocumentId = "doc_x", CandidateId = "c", FieldPath = "/a", ObservedValue = "x", ExpectedValue = "y"
+            };
+
+            var result = await controller.ReportFieldCorrection(request, CancellationToken.None);
+
+            var obj = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(403, obj.StatusCode);
+            Assert.Empty(store.CreatedReports);
+        }
+
+        [Theory]
+        [InlineData("operator")]
+        [InlineData("mapper")]
+        [InlineData("fiscal_admin")]
+        public async Task ReportFieldCorrection_Operador_ou_acima_passa_pelo_gate_de_papel(string role)
+        {
+            var (controller, store, _, _) = BuildController(new FakeWorkspaces { Role = role });
+            var request = new FieldCorrectionRequest
+            {
+                DocumentId = "doc_inexistente", CandidateId = "c", FieldPath = "/a", ObservedValue = "x", ExpectedValue = "y"
+            };
+
+            var result = await controller.ReportFieldCorrection(request, CancellationToken.None);
+
+            Assert.IsType<NotFoundObjectResult>(result); // passou do gate; parou no contexto inexistente
         }
 
         [Fact]
