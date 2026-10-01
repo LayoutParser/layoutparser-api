@@ -129,7 +129,7 @@ namespace LayoutParserApi.Controllers
         /// <response code="400"><c>page</c>/<c>pageSize</c> fora do intervalo, <c>status</c> ou <c>origin</c> inválidos, ou <c>draftId</c> que não é GUID.</response>
         /// <response code="404">Sem identidade ou não é membro do workspace (fail-closed; não existe 401).</response>
         [HttpGet("~/api/workspaces/{workspaceId:guid}/mapping-releases")]
-        [RequireWorkspaceRole(WorkspaceRole.Owner, WorkspaceRole.FiscalAdmin, WorkspaceRole.Mapper, WorkspaceRole.Reviewer, WorkspaceRole.Operator, WorkspaceRole.Viewer)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         public async Task<IActionResult> List(
             Guid workspaceId,
             [FromQuery] int page = 1,
@@ -215,7 +215,7 @@ namespace LayoutParserApi.Controllers
         /// membership → 404; papel insuficiente → 403. Corpo exige <c>justification</c> (422 se ausente).
         /// </remarks>
         [HttpPost("approve")]
-        [RequireWorkspaceRole(WorkspaceRole.Reviewer, WorkspaceRole.FiscalAdmin)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Admin)]
         public async Task<IActionResult> Approve(Guid workspaceId, Guid releaseId, [FromBody] ApproveReleaseRequest request, CancellationToken cancellationToken)
         {
             if (_currentUser.UserId is not Guid userId)
@@ -243,7 +243,7 @@ namespace LayoutParserApi.Controllers
         /// <summary><c>approved → published</c>. Congela os artefatos — edição posterior exige nova revisão (novo <see cref="MappingRelease"/>).</summary>
         /// <remarks>RBAC: exige papel <c>fiscal_admin</c> ou <c>owner</c> no workspace da rota. Sem membership → 404; papel insuficiente → 403.</remarks>
         [HttpPost("publish")]
-        [RequireWorkspaceRole(WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Admin)]
         public async Task<IActionResult> Publish(Guid workspaceId, Guid releaseId, [FromBody] PublishReleaseRequest? request, CancellationToken cancellationToken)
         {
             if (_currentUser.UserId is not Guid userId)
@@ -270,7 +270,7 @@ namespace LayoutParserApi.Controllers
         /// <summary>Reverte a release publicada para a publicação anterior. Idempotente — repetir a chamada é no-op.</summary>
         /// <remarks>RBAC: exige papel <c>fiscal_admin</c> ou <c>owner</c> no workspace da rota. Sem membership → 404; papel insuficiente → 403.</remarks>
         [HttpPost("rollback")]
-        [RequireWorkspaceRole(WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Admin)]
         public async Task<IActionResult> Rollback(Guid workspaceId, Guid releaseId, CancellationToken cancellationToken)
         {
             if (_currentUser.UserId is not Guid userId)
@@ -302,7 +302,7 @@ namespace LayoutParserApi.Controllers
         /// mensagem PT-BR. Idempotente: re-deprecar uma release já <c>deprecated</c> é no-op (200).
         /// </remarks>
         [HttpPost("deprecate")]
-        [RequireWorkspaceRole(WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Admin)]
         public async Task<IActionResult> Deprecate(Guid workspaceId, Guid releaseId, [FromBody] LifecycleTransitionRequest? request, CancellationToken cancellationToken)
         {
             if (_currentUser.UserId is not Guid userId)
@@ -336,7 +336,7 @@ namespace LayoutParserApi.Controllers
         /// PT-BR. Idempotente: re-arquivar uma release já <c>archived</c> é no-op (200).
         /// </remarks>
         [HttpPost("archive")]
-        [RequireWorkspaceRole(WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Admin)]
         public async Task<IActionResult> Archive(Guid workspaceId, Guid releaseId, [FromBody] LifecycleTransitionRequest? request, CancellationToken cancellationToken)
         {
             if (_currentUser.UserId is not Guid userId)

@@ -87,7 +87,7 @@ namespace LayoutParserApi.Controllers
         /// <param name="engine">Opcional. Filtra por motor do draft (<c>tcl</c>/<c>xslt</c>).</param>
         /// <param name="cancellationToken">Token de cancelamento.</param>
         [HttpGet("mapping-drafts")]
-        [RequireWorkspaceRole(WorkspaceRole.Owner, WorkspaceRole.FiscalAdmin, WorkspaceRole.Mapper, WorkspaceRole.Reviewer, WorkspaceRole.Operator, WorkspaceRole.Viewer)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         public async Task<IActionResult> ListDrafts(
             Guid workspaceId,
             [FromQuery] int page = 1,
@@ -118,6 +118,7 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>Cria um Draft a partir de uma revisão EXATA de um pacote (Slice 2) — nunca "a mais recente" implícita.</summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         [HttpPost("mapping-packages/{packageId:guid}/drafts")]
         public async Task<IActionResult> CreateDraft(Guid workspaceId, Guid packageId, [FromBody] CreateDraftRequest request, CancellationToken cancellationToken)
         {
@@ -176,6 +177,7 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>Consulta o draft + regras atuais — só se o usuário for membro do workspace dono.</summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("mapping-drafts/{draftId:guid}")]
         public async Task<IActionResult> GetDraft(Guid workspaceId, Guid draftId, CancellationToken cancellationToken)
         {
@@ -205,7 +207,7 @@ namespace LayoutParserApi.Controllers
         /// (ADR §2.2) — a release compilada guarda seu próprio snapshot.
         /// </summary>
         [HttpPut("mapping-drafts/{draftId:guid}/fiscal-profile")]
-        [RequireWorkspaceRole(WorkspaceRole.Mapper, WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         public async Task<IActionResult> SetFiscalProfile(Guid workspaceId, Guid draftId, [FromBody] SetFiscalProfileRequest request, CancellationToken cancellationToken)
         {
             if (_currentUser.UserId is not Guid userId)
@@ -245,6 +247,7 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>Dispara o job assíncrono de sugestão de regras via IA — nunca bloqueia esperando a IA.</summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         [HttpPost("mapping-drafts/{draftId:guid}/suggestions")]
         public async Task<IActionResult> CreateSuggestionJob(Guid workspaceId, Guid draftId, CancellationToken cancellationToken)
         {
@@ -271,6 +274,7 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>Status observável do job — não é fire-and-forget cego (spec §8: "observáveis").</summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("mapping-drafts/{draftId:guid}/suggestions/{jobId:guid}")]
         public async Task<IActionResult> GetSuggestionJob(Guid workspaceId, Guid draftId, Guid jobId, CancellationToken cancellationToken)
         {
@@ -290,6 +294,7 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>Cancelamento cooperativo do job de sugestão.</summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         [HttpDelete("mapping-drafts/{draftId:guid}/suggestions/{jobId:guid}")]
         public async Task<IActionResult> CancelSuggestionJob(Guid workspaceId, Guid draftId, Guid jobId, CancellationToken cancellationToken)
         {
@@ -321,6 +326,7 @@ namespace LayoutParserApi.Controllers
         /// (identidade vem do BFF — "não autenticado" ⇒ 404 fail-closed) nem <c>403</c> neste
         /// endpoint (autorização só por membership, sem <c>[RequireWorkspaceRole]</c>).
         /// </remarks>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         [HttpPatch("mapping-drafts/{draftId:guid}/rules/{ruleId:guid}")]
         public async Task<IActionResult> UpdateRule(Guid workspaceId, Guid draftId, Guid ruleId, [FromBody] UpdateRuleRequest request, CancellationToken cancellationToken)
         {

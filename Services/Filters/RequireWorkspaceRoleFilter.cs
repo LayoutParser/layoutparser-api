@@ -1,3 +1,4 @@
+using LayoutParserApi.Models.Entities.Identity;
 using LayoutParserApi.Services.Interfaces;
 
 using Microsoft.AspNetCore.Mvc;
@@ -21,26 +22,27 @@ namespace LayoutParserApi.Services.Filters
     /// </remarks>
     public sealed class RequireWorkspaceRoleAttribute : TypeFilterAttribute
     {
-        public RequireWorkspaceRoleAttribute(params string[] allowedRoles) : base(typeof(RequireWorkspaceRoleFilter))
+        /// <summary>Exige papel de nível &gt;= <paramref name="minimum"/> (hierarquia viewer &lt; operator &lt; fiscal_admin &lt; owner).</summary>
+        public RequireWorkspaceRoleAttribute(WorkspaceRoleLevel minimum) : base(typeof(RequireWorkspaceRoleFilter))
         {
-            Arguments = new object[] { allowedRoles };
+            Arguments = new object[] { minimum };
         }
     }
 
     public sealed class RequireWorkspaceRoleFilter : IAsyncActionFilter
     {
-        private readonly string[] _allowedRoles;
+        private readonly WorkspaceRoleLevel _minimum;
         private readonly ICurrentUser _currentUser;
         private readonly IIdentityWorkspaceStore _workspaceStore;
         private readonly ILogger<RequireWorkspaceRoleFilter> _logger;
 
         public RequireWorkspaceRoleFilter(
-            string[] allowedRoles,
+            WorkspaceRoleLevel minimum,
             ICurrentUser currentUser,
             IIdentityWorkspaceStore workspaceStore,
             ILogger<RequireWorkspaceRoleFilter> logger)
         {
-            _allowedRoles = allowedRoles;
+            _minimum = minimum;
             _currentUser = currentUser;
             _workspaceStore = workspaceStore;
             _logger = logger;
@@ -69,11 +71,11 @@ namespace LayoutParserApi.Services.Filters
                 return;
             }
 
-            if (!_allowedRoles.Contains(workspace.Role, StringComparer.OrdinalIgnoreCase))
+            if (!WorkspaceRole.AtLeast(workspace.Role, _minimum))
             {
                 _logger.LogWarning(
-                    "Acesso negado por papel: usuário {UserId} tem papel {Role} no workspace {WorkspaceId}; endpoint exige um de {AllowedRoles}.",
-                    userId, workspace.Role, workspaceId, string.Join(",", _allowedRoles));
+                    "Acesso negado por papel: usuário {UserId} tem papel {Role} no workspace {WorkspaceId}; endpoint exige nível mínimo {MinimumLevel}.",
+                    userId, workspace.Role, workspaceId, _minimum);
                 context.Result = new ObjectResult(new { error = "Papel insuficiente para esta operação." })
                 {
                     StatusCode = StatusCodes.Status403Forbidden

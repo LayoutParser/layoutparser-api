@@ -1,3 +1,5 @@
+using LayoutParserApi.Services.Filters;
+using LayoutParserApi.Models.Entities.Identity;
 using LayoutParserApi.Models.Entities.Fiscal;
 using LayoutParserApi.Services.Interfaces;
 
@@ -46,6 +48,7 @@ namespace LayoutParserApi.Controllers
         // SCS0016 (issue #88): mesmo padrão já aceito em ParseController.Upload — sem cookie de
         // sessão, identidade via BFF/TrustedIdentityMiddleware com guarda de loopback.
 #pragma warning disable SCS0016
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         [HttpPost("projects/{projectId:guid}/mapping-packages")]
         [RequestSizeLimit(10 * Services.Validation.MultipartUploadValidator.MaxArtifactSizeBytes)]
         public async Task<IActionResult> CreatePackage(
@@ -132,6 +135,7 @@ namespace LayoutParserApi.Controllers
         /// <see cref="FiscalProject"/>); existe só para o front-end navegar/selecionar projeto sem
         /// exigir o GUID colado manualmente.
         /// </summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("projects")]
         public async Task<IActionResult> ListProjects(Guid workspaceId, CancellationToken cancellationToken)
         {
@@ -180,6 +184,7 @@ namespace LayoutParserApi.Controllers
         /// multipart de <see cref="CreatePackage"/> — cada arquivo identificado pelo NOME DO CAMPO.
         /// </summary>
 #pragma warning disable SCS0016
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         [HttpPost("mapping-packages/{packageId:guid}/revisions")]
         [RequestSizeLimit(10 * Services.Validation.MultipartUploadValidator.MaxArtifactSizeBytes)]
         public async Task<IActionResult> CreateRevision(
@@ -247,6 +252,7 @@ namespace LayoutParserApi.Controllers
         /// mais recente (Gap 3 — issue #201) — reusa <see cref="Services.Fiscal.FiscalMappingRuleExtractor"/>,
         /// sem devolver o conteúdo bruto da planilha.
         /// </summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("mapping-packages/{packageId:guid}/artifacts/{artifactId:guid}/excel-inventory")]
         public async Task<IActionResult> GetExcelInventory(Guid workspaceId, Guid packageId, Guid artifactId, CancellationToken cancellationToken)
         {
@@ -284,6 +290,7 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>Pacote + inventário de artefatos da revisão mais recente. Nunca expõe conteúdo bruto.</summary>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("mapping-packages/{packageId:guid}")]
         public async Task<IActionResult> GetPackage(Guid workspaceId, Guid packageId, CancellationToken cancellationToken)
         {

@@ -212,26 +212,19 @@ namespace LayoutParserApi.Tests.Controllers
             Assert.Equal(StatusCodes.Status503ServiceUnavailable, r.StatusCode);
         }
 
-        private static string[] RolesOf(string method)
+        private static WorkspaceRoleLevel LevelOf(string method)
         {
             var attr = typeof(MappingRuleAnswersController).GetMethod(method)!.GetCustomAttribute<RequireWorkspaceRoleAttribute>();
             Assert.NotNull(attr);
-            return (string[])attr!.Arguments![0];
+            return (WorkspaceRoleLevel)attr!.Arguments![0];
         }
 
         [Fact]
-        public void Rbac_escrita_exige_papel_de_revisao_e_leitura_e_para_membros()
+        public void Rbac_escrita_exige_operador_e_leitura_e_para_leitor()
         {
-            var escrita = RolesOf(nameof(MappingRuleAnswersController.SaveAnswer));
-            Assert.Contains(WorkspaceRole.Reviewer, escrita);
-            Assert.Contains(WorkspaceRole.Mapper, escrita);
-            Assert.Contains(WorkspaceRole.FiscalAdmin, escrita);
-            Assert.Contains(WorkspaceRole.Owner, escrita);
-            Assert.DoesNotContain(WorkspaceRole.Viewer, escrita);
-            Assert.DoesNotContain(WorkspaceRole.Operator, escrita);
-
-            Assert.Contains(WorkspaceRole.Viewer, RolesOf(nameof(MappingRuleAnswersController.ListByDraft)));
-            Assert.Contains(WorkspaceRole.Viewer, RolesOf(nameof(MappingRuleAnswersController.ListByRule)));
+            Assert.Equal(WorkspaceRoleLevel.Operator, LevelOf(nameof(MappingRuleAnswersController.SaveAnswer)));
+            Assert.Equal(WorkspaceRoleLevel.Viewer, LevelOf(nameof(MappingRuleAnswersController.ListByDraft)));
+            Assert.Equal(WorkspaceRoleLevel.Viewer, LevelOf(nameof(MappingRuleAnswersController.ListByRule)));
         }
     }
 }

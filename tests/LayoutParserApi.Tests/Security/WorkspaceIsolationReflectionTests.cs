@@ -19,53 +19,20 @@ namespace LayoutParserApi.Tests.Security
     /// </summary>
     public class WorkspaceIsolationReflectionTests
     {
-        // Justificativas reutilizadas (o motivo de cada exceção é o mesmo dentro do grupo).
-        private const string ViaStoreDraft =
-            "Sem filtro, mas o isolamento é feito no corpo da ação: GetDraftIfMemberAsync/GetReleaseIfMemberAsync/GetSuiteIfMemberAsync fazem JOIN com tbLpWorkspaceMembership (m.UserId = usuário atual) e a ação ainda exige X.WorkspaceId == {workspaceId} da rota; não-membro/workspace trocado -> 404. Sem checagem de PAPEL (qualquer membro, inclusive Viewer) — decisão de produto, não brecha cross-workspace.";
-        private const string ViaMembershipManual =
-            "Sem filtro, mas a ação chama GetWorkspaceForMemberAsync/GetWorkspaceIfMemberAsync(workspaceId, userId) e devolve 404 para não-membro (ou delega a serviço que faz o mesmo, exigindo package.WorkspaceId == {workspaceId}).";
-
         /// <summary>
         /// Exceções APROVADAS (ação com {workspaceId} na rota sem o atributo). Granularidade
         /// POR AÇÃO, de propósito: uma ação nova no mesmo controller NÃO herda a exceção e falha o
         /// teste. Cada uma só é aceita porque foi lida e confirmada como isolada por membership
         /// explícito (não é "dispensa" de isolamento). Chave: "Controller.Action".
-        /// Candidatas a migrar para <c>[RequireWorkspaceRole]</c> (uniformizar e ganhar RBAC).
+        /// Pós RBAC de 4 papéis (2026-10-01) só restam as 2 rotas /api/admin (sudo); toda ação de workspace tem o atributo.
         /// </summary>
         private static readonly Dictionary<string, string> ExcecoesAprovadas = new(StringComparer.Ordinal)
         {
-            ["WorkspacesController.GetWorkspace"] =
-                "GET /api/workspaces/{workspaceId}: a própria ação consulta GetWorkspaceForMemberAsync(workspaceId, userId) e devolve 404 uniforme para não-membro (WorkspacesControllerTests).",
-
             ["AdminController.WorkspaceMembers"] =
                 "GET /api/admin/workspaces/{workspaceId}/members: visão GLOBAL do super-administrador, cross-workspace de propósito. Protegida por [RequireSudo] no controller (não-sudo -> 404; sudo só por e-mail em Security:SudoEmails, com auditoria por acesso) — ver SudoTests.",
 
             ["AdminController.UpdateWorkspace"] =
                 "PATCH /api/admin/workspaces/{workspaceId}: promoção/renomeio de workspace pelo super-administrador, cross-workspace de propósito. Protegida por [RequireSudo] no controller (não-sudo -> 404), só promove a 'team' (nunca rebaixa) e é auditada — ver AdminControllerTests/SudoTests.",
-
-            ["FiscalMappingPackagesController.CreatePackage"] = ViaMembershipManual,
-            ["FiscalMappingPackagesController.ListProjects"] = ViaMembershipManual,
-            ["FiscalMappingPackagesController.CreateRevision"] = ViaMembershipManual,
-            ["FiscalMappingPackagesController.GetExcelInventory"] = ViaMembershipManual,
-            ["FiscalMappingPackagesController.GetPackage"] = ViaMembershipManual,
-            ["MappingExplanationController.GetExplanation"] = ViaMembershipManual,
-            ["MappingDraftsController.CreateDraft"] = ViaMembershipManual,
-
-            ["MappingDraftsController.GetDraft"] = ViaStoreDraft,
-            ["MappingDraftsController.CreateSuggestionJob"] = ViaStoreDraft,
-            ["MappingDraftsController.GetSuggestionJob"] = ViaStoreDraft,
-            ["MappingDraftsController.CancelSuggestionJob"] = ViaStoreDraft,
-            ["MappingDraftsController.UpdateRule"] = ViaStoreDraft,
-            ["MappingCompilationController.Compile"] = ViaStoreDraft,
-            ["MappingCompilationController.GetCompileJob"] = ViaStoreDraft,
-            ["MappingCompilationController.GetRelease"] = ViaStoreDraft,
-            ["MappingCompilationController.DiffReleases"] = ViaStoreDraft,
-            ["MappingCompilationController.CreateTestRun"] = ViaStoreDraft,
-            ["MappingCompilationController.GetTestRunJob"] = ViaStoreDraft,
-            ["TestSuiteController.ListSuites"] = ViaStoreDraft,
-            ["TestSuiteController.GetSuite"] = ViaStoreDraft,
-            ["TestSuiteController.ListFixtures"] = ViaStoreDraft,
-            ["TestSuiteController.ListRuns"] = ViaStoreDraft,
         };
 
         private static IEnumerable<Type> Controllers() =>

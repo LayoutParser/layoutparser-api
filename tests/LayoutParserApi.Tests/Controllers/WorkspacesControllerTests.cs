@@ -103,6 +103,35 @@ namespace LayoutParserApi.Tests.Controllers
             Assert.NotNull(ok.Value);
         }
 
+        [Theory]
+        [InlineData("viewer", "viewer", false, false, false)]
+        [InlineData("operator", "operator", true, false, false)]
+        [InlineData("mapper", "operator", true, false, false)]
+        [InlineData("reviewer", "operator", true, false, false)]
+        [InlineData("fiscal_admin", "fiscal_admin", true, true, true)]
+        [InlineData("owner", "owner", true, true, true)]
+        public async Task GetMe_expoe_role_canonico_e_permissions_por_papel(
+            string roleBanco, string roleEsperado, bool canEdit, bool canPublish, bool canManage)
+        {
+            var service = new FakeIdentityWorkspaceService();
+            var userId = Guid.NewGuid();
+            var workspaceId = Guid.NewGuid();
+            service.Workspaces[workspaceId] = new WorkspaceSummary(workspaceId, "WS", "shared", roleBanco, DateTimeOffset.UtcNow);
+            service.Memberships.Add((workspaceId, userId));
+            var controller = BuildController(service, new FakeCurrentUser { UserId = userId, Name = "u" });
+
+            var ok = Assert.IsType<OkObjectResult>(await controller.GetMe(CancellationToken.None));
+
+            var json = System.Text.Json.JsonSerializer.Serialize(ok.Value);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var ws = doc.RootElement.GetProperty("workspaces")[0];
+            Assert.Equal(roleEsperado, ws.GetProperty("role").GetString());
+            var perm = ws.GetProperty("permissions");
+            Assert.Equal(canEdit, perm.GetProperty("canEdit").GetBoolean());
+            Assert.Equal(canPublish, perm.GetProperty("canPublish").GetBoolean());
+            Assert.Equal(canManage, perm.GetProperty("canManageMembers").GetBoolean());
+        }
+
         [Fact]
         public async Task GetMe_falha_no_servico_degrada_para_503_nao_para_workspace_vazio_de_mentira()
         {

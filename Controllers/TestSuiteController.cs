@@ -69,7 +69,7 @@ namespace LayoutParserApi.Controllers
         /// <response code="404">Sem identidade, não-membro, ou draft inexistente/de outro workspace.</response>
         /// <response code="422">Campo <c>name</c> ausente ou vazio.</response>
         [HttpPost]
-        [RequireWorkspaceRole(WorkspaceRole.Mapper, WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         public async Task<IActionResult> CreateSuite(Guid workspaceId, Guid draftId, [FromBody] CreateTestSuiteRequest request, CancellationToken cancellationToken)
         {
             if (_currentUser.UserId is not Guid userId)
@@ -89,6 +89,7 @@ namespace LayoutParserApi.Controllers
         /// <summary>Lista as suítes do draft.</summary>
         /// <response code="200">Array de suítes do draft.</response>
         /// <response code="404">Sem identidade, não-membro, ou draft inexistente/de outro workspace.</response>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet]
         public async Task<IActionResult> ListSuites(Guid workspaceId, Guid draftId, CancellationToken cancellationToken)
         {
@@ -106,6 +107,7 @@ namespace LayoutParserApi.Controllers
         /// <summary>Consulta uma suíte.</summary>
         /// <response code="200">Suíte (mesmo formato do <c>POST</c>).</response>
         /// <response code="404">Sem identidade, não-membro, ou suíte inexistente/de outro draft/workspace.</response>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("{suiteId:guid}")]
         public async Task<IActionResult> GetSuite(Guid workspaceId, Guid draftId, Guid suiteId, CancellationToken cancellationToken)
         {
@@ -125,7 +127,7 @@ namespace LayoutParserApi.Controllers
         /// <response code="404">Sem identidade, não-membro, ou suíte inexistente/de outro draft/workspace.</response>
         /// <response code="422">Faltam <c>name</c>, <c>inputXml</c> ou <c>expectedXml</c>.</response>
         [HttpPost("{suiteId:guid}/fixtures")]
-        [RequireWorkspaceRole(WorkspaceRole.Mapper, WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         public async Task<IActionResult> AddFixture(Guid workspaceId, Guid draftId, Guid suiteId, [FromBody] AddTestSuiteFixtureRequest request, CancellationToken cancellationToken)
         {
             if (_currentUser.UserId is not Guid userId)
@@ -148,6 +150,7 @@ namespace LayoutParserApi.Controllers
         /// <summary>Lista as fixtures da suíte, na ordem de execução.</summary>
         /// <response code="200">Array de fixtures ordenado por <c>sortOrder</c>.</response>
         /// <response code="404">Sem identidade, não-membro, ou suíte inexistente/de outro draft/workspace.</response>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("{suiteId:guid}/fixtures")]
         public async Task<IActionResult> ListFixtures(Guid workspaceId, Guid draftId, Guid suiteId, CancellationToken cancellationToken)
         {
@@ -178,7 +181,7 @@ namespace LayoutParserApi.Controllers
         /// <response code="422"><c>releaseId</c> ausente; suíte/draft/release inexistente ou fora do workspace/draft; ou suíte sem fixtures.</response>
         /// <response code="503">Falha inesperada ao executar (detalhe só no log).</response>
         [HttpPost("{suiteId:guid}/run")]
-        [RequireWorkspaceRole(WorkspaceRole.Mapper, WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         public async Task<IActionResult> RunSuite(Guid workspaceId, Guid draftId, Guid suiteId, [FromBody] RunTestSuiteRequest request, CancellationToken cancellationToken)
         {
             if (_currentUser.UserId is not Guid userId)
@@ -214,6 +217,7 @@ namespace LayoutParserApi.Controllers
         /// <param name="cancellationToken">Token de cancelamento.</param>
         /// <response code="200"><c>{ items[], totalCount }</c> — cada item no formato do <c>POST .../run</c>.</response>
         /// <response code="404">Sem identidade, não-membro, ou suíte inexistente/de outro draft/workspace.</response>
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         [HttpGet("{suiteId:guid}/runs")]
         public async Task<IActionResult> ListRuns(Guid workspaceId, Guid draftId, Guid suiteId, [FromQuery] int page, [FromQuery] int pageSize, CancellationToken cancellationToken)
         {

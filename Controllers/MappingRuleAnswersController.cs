@@ -69,7 +69,7 @@ namespace LayoutParserApi.Controllers
         /// <response code="404">Sem identidade, não-membro, draft de outro workspace, regra ou <c>questionIndex</c> inexistente.</response>
         /// <response code="503">Falha ao gravar (detalhe só no log).</response>
         [HttpPut("mapping-drafts/{draftId:guid}/rules/{ruleId:guid}/questions/{questionIndex:int}/answer")]
-        [RequireWorkspaceRole(WorkspaceRole.Owner, WorkspaceRole.FiscalAdmin, WorkspaceRole.Mapper, WorkspaceRole.Reviewer)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Operator)]
         public async Task<IActionResult> SaveAnswer(
             Guid workspaceId, Guid draftId, Guid ruleId, int questionIndex,
             [FromBody] SaveQuestionAnswerRequest request, CancellationToken cancellationToken)
@@ -122,7 +122,7 @@ namespace LayoutParserApi.Controllers
         /// <response code="404">Sem identidade, não-membro ou draft de outro workspace.</response>
         /// <response code="503">Falha ao consultar (detalhe só no log).</response>
         [HttpGet("mapping-drafts/{draftId:guid}/question-answers")]
-        [RequireWorkspaceRole(WorkspaceRole.Owner, WorkspaceRole.FiscalAdmin, WorkspaceRole.Mapper, WorkspaceRole.Reviewer, WorkspaceRole.Operator, WorkspaceRole.Viewer)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         public Task<IActionResult> ListByDraft(Guid workspaceId, Guid draftId, [FromQuery] bool includeHistory = false, CancellationToken cancellationToken = default)
             => ListAsync(workspaceId, draftId, null, includeHistory, cancellationToken);
 
@@ -136,7 +136,7 @@ namespace LayoutParserApi.Controllers
         /// <response code="404">Sem identidade, não-membro, draft de outro workspace ou regra inexistente no draft.</response>
         /// <response code="503">Falha ao consultar (detalhe só no log).</response>
         [HttpGet("mapping-drafts/{draftId:guid}/rules/{ruleId:guid}/question-answers")]
-        [RequireWorkspaceRole(WorkspaceRole.Owner, WorkspaceRole.FiscalAdmin, WorkspaceRole.Mapper, WorkspaceRole.Reviewer, WorkspaceRole.Operator, WorkspaceRole.Viewer)]
+        [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
         public Task<IActionResult> ListByRule(Guid workspaceId, Guid draftId, Guid ruleId, [FromQuery] bool includeHistory = false, CancellationToken cancellationToken = default)
             => ListAsync(workspaceId, draftId, ruleId, includeHistory, cancellationToken);
 

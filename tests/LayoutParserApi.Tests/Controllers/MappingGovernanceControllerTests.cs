@@ -498,7 +498,7 @@ namespace LayoutParserApi.Tests.Controllers
             var workspaceStore = new FakeIdentityWorkspaceStore();
             workspaceStore.Memberships[(workspaceId, userId)] = roleInsuficiente;
             var currentUser = new FakeCurrentUser { UserId = userId };
-            var filter = new RequireWorkspaceRoleFilter(new[] { WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner }, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
+            var filter = new RequireWorkspaceRoleFilter(WorkspaceRoleLevel.Admin, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
 
             var result = await RunFilterAsync(filter, workspaceId, userId, currentUser);
 
@@ -514,7 +514,7 @@ namespace LayoutParserApi.Tests.Controllers
             var workspaceStore = new FakeIdentityWorkspaceStore();
             workspaceStore.Memberships[(workspaceId, userId)] = WorkspaceRole.FiscalAdmin;
             var currentUser = new FakeCurrentUser { UserId = userId };
-            var filter = new RequireWorkspaceRoleFilter(new[] { WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner }, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
+            var filter = new RequireWorkspaceRoleFilter(WorkspaceRoleLevel.Admin, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
 
             var result = await RunFilterAsync(filter, workspaceId, userId, currentUser);
 
@@ -528,7 +528,7 @@ namespace LayoutParserApi.Tests.Controllers
             var userId = Guid.NewGuid();
             var workspaceStore = new FakeIdentityWorkspaceStore(); // sem membership nenhuma
             var currentUser = new FakeCurrentUser { UserId = userId };
-            var filter = new RequireWorkspaceRoleFilter(new[] { WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner }, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
+            var filter = new RequireWorkspaceRoleFilter(WorkspaceRoleLevel.Admin, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
 
             var result = await RunFilterAsync(filter, workspaceId, userId, currentUser);
 
@@ -547,7 +547,7 @@ namespace LayoutParserApi.Tests.Controllers
             var workspaceStore = new FakeIdentityWorkspaceStore();
             workspaceStore.Memberships[(workspaceDoUsuario, userId)] = WorkspaceRole.Owner;
             var currentUser = new FakeCurrentUser { UserId = userId };
-            var filter = new RequireWorkspaceRoleFilter(new[] { WorkspaceRole.FiscalAdmin, WorkspaceRole.Owner }, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
+            var filter = new RequireWorkspaceRoleFilter(WorkspaceRoleLevel.Admin, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
 
             // Usuário troca o workspaceId na URL para o de outra pessoa.
             var result = await RunFilterAsync(filter, workspaceAlheio, userId, currentUser);
@@ -564,7 +564,7 @@ namespace LayoutParserApi.Tests.Controllers
             var workspaceStore = new FakeIdentityWorkspaceStore();
             workspaceStore.Memberships[(workspaceId, donoDoWorkspace)] = WorkspaceRole.Owner;
             var currentUser = new FakeCurrentUser { UserId = intruso };
-            var filter = new RequireWorkspaceRoleFilter(new[] { WorkspaceRole.Owner }, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
+            var filter = new RequireWorkspaceRoleFilter(WorkspaceRoleLevel.Admin, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
 
             var result = await RunFilterAsync(filter, workspaceId, intruso, currentUser);
 
@@ -578,7 +578,7 @@ namespace LayoutParserApi.Tests.Controllers
             var workspaceStore = new FakeIdentityWorkspaceStore();
             workspaceStore.Memberships[(workspaceId, Guid.NewGuid())] = WorkspaceRole.Owner;
             var currentUser = new FakeCurrentUser { UserId = null }; // fail-closed do incidente #408
-            var filter = new RequireWorkspaceRoleFilter(new[] { WorkspaceRole.Owner }, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
+            var filter = new RequireWorkspaceRoleFilter(WorkspaceRoleLevel.Admin, currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
 
             var result = await RunFilterAsync(filter, workspaceId, Guid.Empty, currentUser);
 
@@ -809,8 +809,7 @@ namespace LayoutParserApi.Tests.Controllers
             var workspaceStore = new FakeIdentityWorkspaceStore();
             workspaceStore.Memberships[(workspaceId, userId)] = WorkspaceRole.Viewer;
             var currentUser = new FakeCurrentUser { UserId = userId };
-            var filter = new RequireWorkspaceRoleFilter(
-                new[] { WorkspaceRole.Owner, WorkspaceRole.FiscalAdmin, WorkspaceRole.Mapper, WorkspaceRole.Reviewer, WorkspaceRole.Operator, WorkspaceRole.Viewer },
+            var filter = new RequireWorkspaceRoleFilter(WorkspaceRoleLevel.Viewer,
                 currentUser, workspaceStore, NullLogger<RequireWorkspaceRoleFilter>.Instance);
 
             var result = await RunFilterAsync(filter, workspaceId, userId, currentUser);

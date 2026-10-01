@@ -17,21 +17,31 @@ namespace LayoutParserApi.Controllers
 
     /// <summary>
     /// Membros de workspace de time (pedido do portal, thread "adicionar membros por e-mail").
-    /// Autorização: papel <c>owner</c>/<c>fiscal_admin</c> do workspace da rota
+    /// Autorização: nível Administrador (<c>fiscal_admin</c>/<c>owner</c>) no workspace da rota
     /// (<see cref="RequireWorkspaceRoleAttribute"/>) — não-membro = 404, membro sem papel = 403.
     /// Erros sempre com corpo JSON <c>{ error }</c>.
     /// </summary>
     [ApiController]
     [Route("api/workspaces/{workspaceId:guid}/members")]
-    [RequireWorkspaceRole(WorkspaceRole.Owner, WorkspaceRole.FiscalAdmin)]
+    [RequireWorkspaceRole(WorkspaceRoleLevel.Admin)]
     public class WorkspaceMembersController : ControllerBase
     {
         // "owner" só é atribuído pelo sistema (criação do workspace) — nunca via API.
         private static readonly HashSet<string> AssignableRoles = new(StringComparer.Ordinal)
         {
-            WorkspaceRole.FiscalAdmin, WorkspaceRole.Mapper, WorkspaceRole.Reviewer,
-            WorkspaceRole.Operator, WorkspaceRole.Viewer
+            WorkspaceRole.FiscalAdmin, WorkspaceRole.Operator, WorkspaceRole.Viewer
         };
+
+        private const string PapelInvalido = "Papel inválido. Aceitos: fiscal_admin, operator, viewer.";
+        private const string PapelLegado = "Papel legado: use operator no lugar de mapper/reviewer.";
+
+        /// <summary>Valida o papel pedido; null = ok, senão a mensagem de 400 (legado tem mensagem própria).</summary>
+        private static string? ValidarPapel(string? role)
+        {
+            if (string.IsNullOrEmpty(role)) return PapelInvalido;
+            if (role is WorkspaceRole.Mapper or WorkspaceRole.Reviewer) return PapelLegado;
+            return AssignableRoles.Contains(role) ? null : PapelInvalido;
+        }
 
         private readonly IWorkspaceMemberStore _members;
         private readonly IIdentityWorkspaceService _workspaces;
@@ -59,6 +69,7 @@ namespace LayoutParserApi.Controllers
             _logger = logger;
         }
 
+        /// <summary>Lista membros (Admin+; D4 assumido, a confirmar).</summary>
         [HttpGet]
         public async Task<IActionResult> List(Guid workspaceId, CancellationToken cancellationToken)
         {
@@ -77,8 +88,9 @@ namespace LayoutParserApi.Controllers
                 return BadRequest(new { error = "E-mail inválido." });
 
             var role = body?.Role?.Trim();
-            if (string.IsNullOrEmpty(role) || !AssignableRoles.Contains(role))
-                return BadRequest(new { error = "Papel inválido. Aceitos: fiscal_admin, mapper, reviewer, operator, viewer." });
+            var erroPapel = ValidarPapel(role);
+            if (erroPapel != null)
+                return BadRequest(new { error = erroPapel });
 
             return await Guarded(workspaceId, cancellationToken, async workspace =>
             {
@@ -98,8 +110,9 @@ namespace LayoutParserApi.Controllers
         public async Task<IActionResult> ChangeRole(Guid workspaceId, Guid userId, [FromBody] ChangeWorkspaceMemberRoleRequest? body, CancellationToken cancellationToken)
         {
             var role = body?.Role?.Trim();
-            if (string.IsNullOrEmpty(role) || !AssignableRoles.Contains(role))
-                return BadRequest(new { error = "Papel inválido. Aceitos: fiscal_admin, mapper, reviewer, operator, viewer." });
+            var erroPapel = ValidarPapel(role);
+            if (erroPapel != null)
+                return BadRequest(new { error = erroPapel });
 
             return await Guarded(workspaceId, cancellationToken, async workspace =>
                 Outcome(await _members.ChangeRoleAsync(workspaceId, userId, role, cancellationToken), noContentOnOk: true));
@@ -163,7 +176,7 @@ namespace LayoutParserApi.Controllers
             userId = m.UserId,
             displayName = m.DisplayName,
             email = m.Email,
-            role = m.Role,
+            role = WorkspaceRole.Canonical(m.Role),
             status = m.Status,
             createdAt = m.CreatedAt
         };

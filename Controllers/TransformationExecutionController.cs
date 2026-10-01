@@ -1,3 +1,4 @@
+using LayoutParserApi.Models.Entities.Identity;
 using System.Collections.Concurrent;
 using System.Xml.Linq;
 
@@ -60,6 +61,7 @@ namespace LayoutParserApi.Controllers
         private readonly Services.Security.ICanaryAlertService _canaryAlert;
         private readonly IFieldCorrectionStore _fieldCorrectionStore;
         private readonly TrainingDataCaptureService _trainingDataCapture;
+        private readonly Services.Interfaces.IIdentityWorkspaceService? _identityWorkspaces;
 
         public TransformationExecutionController(
             ILogger<TransformationExecutionController> logger,
@@ -82,8 +84,10 @@ namespace LayoutParserApi.Controllers
             IServiceScopeFactory scopeFactory,
             Services.Security.ICanaryAlertService canaryAlert,
             IFieldCorrectionStore fieldCorrectionStore,
-            TrainingDataCaptureService trainingDataCapture)
+            TrainingDataCaptureService trainingDataCapture,
+            Services.Interfaces.IIdentityWorkspaceService? identityWorkspaces = null)
         {
+            _identityWorkspaces = identityWorkspaces;
             _logger = logger;
             _pipelineService = pipelineService;
             _validatorService = validatorService;
@@ -478,6 +482,7 @@ namespace LayoutParserApi.Controllers
         /// </param>
         /// <response code="202">Reporte registrado — <c>{ reportId, status: "queued", message }</c>.</response>
         /// <response code="400">Campo obrigatório ausente.</response>
+        /// <response code="403">Usuário só tem papel de Leitor (viewer) em seus workspaces.</response>
         /// <response code="404">
         /// Sem identidade resolvida, OU <c>documentId</c> não resolve contexto persistido (mensagem
         /// pede para reenviar o parse — contexto pode ter expirado, gravação best-effort pode ter
@@ -489,6 +494,23 @@ namespace LayoutParserApi.Controllers
         {
             if (_currentUser.UserId is not Guid userId)
                 return NotFound(); // fail-closed, mesmo padrão de MappingGovernanceController.
+
+            // RBAC 4 papéis (D3, 2026-10-01): field-correction grava na fila de curadoria => Leitor NÃO usa.
+            // Exige nível Operador+ em ao menos um workspace do usuário.
+            if (_identityWorkspaces != null)
+            {
+                try
+                {
+                    var meus = await _identityWorkspaces.GetOrCreateMyWorkspacesAsync(userId, cancellationToken);
+                    if (!meus.Workspaces.Any(w => WorkspaceRole.AtLeast(w.Role, WorkspaceRoleLevel.Operator)))
+                        return StatusCode(StatusCodes.Status403Forbidden, new { success = false, error = "Papel insuficiente para esta operação." });
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "Falha ao verificar papel de workspace para field-correction");
+                    return StatusCode(StatusCodes.Status503ServiceUnavailable, new { success = false, error = "Não foi possível verificar permissões no momento." });
+                }
+            }
 
             if (request == null || string.IsNullOrWhiteSpace(request.DocumentId))
                 return BadRequest(new { success = false, error = "documentId é obrigatório" });
