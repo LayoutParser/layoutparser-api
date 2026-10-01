@@ -28,7 +28,7 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>
-        /// Devolve árvores de entrada/destino, vínculos, regras e diagnósticos. 404: sem identidade/não-membro
+        /// Devolve árvores de entrada/destino, vínculos, regras e diagnósticos (referências <c>REF_*</c> de <c>I.</c>/<c>T.</c> e integridade de ligações/regras; ver <see cref="LayoutParserApi.Models.Dtos.StudioModel.StudioDiagnostic"/>; somente visualização). 404: sem identidade/não-membro
         /// (<see cref="RequireWorkspaceRoleFilter"/>) ou mapper inexistente; 400: <c>engine</c> inválido;
         /// 501: engine conhecido sem adaptador registrado; 503: catálogo indisponível; 304: <c>If-None-Match</c> casa o eTag.
         /// Headers: <c>ETag</c> e <c>Cache-Control: private, no-cache</c>.

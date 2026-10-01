@@ -965,9 +965,33 @@ Papéis: qualquer membro do workspace. Resposta `200` (`schemaVersion = 1`): `ar
 | `501` | Engine válido sem adaptador (`xslt`). |
 | `503` | Catálogo de mappers indisponível (corpo genérico, nunca expõe XML). |
 
-- **Diagnósticos** (não bloqueantes, exceto o `error`): `ORPHAN_LINK`, `AMBIGUOUS_NAME_PATH`, `DUPLICATE_NODE_ID`,
-  `MISSING_ELEMENT_GUID`, `OFFSET_UNRESOLVED`, `UNKNOWN_NODE_TYPE`, `LAYOUT_UNAVAILABLE`, `MAPPER_UNREADABLE`,
-  `TARGET_HAS_MULTIPLE_LINKS` (todos `warning`) e `TARGET_HAS_LINK_AND_RULE` (`error`).
+- **Diagnósticos** (não bloqueantes, exceto o `error`; somente visualização, nada é corrigido/removido). Estruturais:
+  `AMBIGUOUS_NAME_PATH`, `DUPLICATE_NODE_ID`, `MISSING_ELEMENT_GUID`, `OFFSET_UNRESOLVED`, `UNKNOWN_NODE_TYPE`,
+  `LAYOUT_UNAVAILABLE`, `MAPPER_UNREADABLE` (todos `warning`). Campos opcionais por diagnóstico: `span` (`[início, fim]` no
+  `Code` da regra), `suggestion`, `ruleId`, `winnerId`.
+  - **Referências `I.`/`T.` (#618)** — semântica do motor ConnectUs: `I.` é insensível à caixa e resolve o 1º elemento em
+    pré-ordem; `T.` é sensível à caixa; o caminho é FullXPath sem o nome do layout, ignorando Sequence/GroupWithoutOrder/CharacterIgnoreGroup.
+
+    | Código | Sev. | Significado |
+    |--------|------|-------------|
+    | `REF_UNRESOLVED` | warning | Caminho não resolve (`I.` => Null; `T.` => valor descartado), em silêncio no ConnectUs. `suggestion` = caminho existente com 1 segmento diferente. |
+    | `REF_AMBIGUOUS` | warning | Elementos homônimos; vale o 1º em pré-ordem (`ids` lista os candidatos). |
+    | `REF_T_CASE_MISMATCH` | error | `T.` só difere na caixa; valor perdido em silêncio (`suggestion` = caixa correta). |
+    | `REF_INDEX_UNSUPPORTED` | warning | Índice `[n]` não existe em `I.`/`T.` (sugere `GetValueFromElementXPath`/`GetListValuesFromFullXPath`). |
+    | `REF_NAME_BREAKS_TOKEN` | error | Nome com caractere separador: o token é cortado e o resto vira código. |
+    | `REF_T_NOT_CONSUMED` | warning | Destino visitado antes da âncora da regra; o valor atribuído não é consumido. |
+
+  - **Integridade de ligações/regras (#619)**:
+
+    | Código | Sev. | Significado |
+    |--------|------|-------------|
+    | `LINK_ORPHAN_SOURCE` | warning | Ligação com origem inexistente (ignorada pelo ConnectUs; não removida). |
+    | `LINK_ORPHAN_TARGET` | warning | Ligação com destino inexistente (nunca visitada; não removida). |
+    | `RULE_ORPHAN_TARGET` | warning | Regra ancorada em destino inexistente (nunca executa; não removida). |
+    | `TARGET_LINK_AND_RULE` | error | Destino com ligação e regra: só a ligação executa. |
+    | `N1_ORDER_SENSITIVE` | warning | Destino com várias ligações; vence a 1ª com dados pela ordem do arquivo. `winnerId` é **aproximação estática** (1ª por Sequence cuja origem existe no modelo), sem dado de execução. |
+
+  Os códigos legados `ORPHAN_LINK`, `TARGET_HAS_LINK_AND_RULE` e `TARGET_HAS_MULTIPLE_LINKS` foram substituídos pelos acima.
 - **Limitação do catálogo `DataTypeVO`:** o nome do tipo vem de um catálogo opcional (GUID `DAT_` para nome). Sem fonte
   registrada, o nome vira `?` e aparece assim em `display.text`. Não é erro.
 
@@ -978,7 +1002,7 @@ Exemplo sintético (abreviado):
   "artifact": { "engine": "sysmiddle", "id": "MAP_EXEMPLO", "eTag": "\"abc123\"" },
   "capabilities": { "edit": false, "editableOps": [] },
   "nodes": { "N1": { "tree": "target", "type": "field", "name": "Campo", "display": { "text": "Campo : ?" } } },
-  "diagnostics": [ { "code": "ORPHAN_LINK", "severity": "warning", "message": "..." } ] }
+  "diagnostics": [ { "code": "LINK_ORPHAN_SOURCE", "severity": "warning", "message": "..." } ] }
 ```
 
 **🇺🇸** Read-only endpoint (Phase 1) returning the single Mapping Studio model (`schemaVersion = 1`): input/target
@@ -986,7 +1010,7 @@ trees, nodes, links, rules, datatypes and diagnostics. `engine=sysmiddle` (Phase
 `offset` = running sum of previous `length`s, no links/rules, deterministic `tcl:<name-path>` ids, malformed TCL yields `200` with a diagnostic)
 are implemented; `xslt` returns `501`; any other value returns `400`. Responses carry `ETag` and `Cache-Control: private, no-cache`;
 a matching `If-None-Match` yields `304`. `404` for non-members or unknown mapper, `503` when the mapper catalog is
-unavailable. Diagnostics are listed above (only `TARGET_HAS_LINK_AND_RULE` is an `error`). Known limitation: the
+unavailable. Diagnostics are listed above (read-only; `error` severity: `TARGET_LINK_AND_RULE`, `REF_T_CASE_MISMATCH`, `REF_NAME_BREAKS_TOKEN`). `I.` refs are case-insensitive (first match in pre-order), `T.` refs are case-sensitive, paths are FullXPath without the layout name; `winnerId` in `N1_ORDER_SENSITIVE` is a static approximation (no execution data). Legacy codes `ORPHAN_LINK`, `TARGET_HAS_LINK_AND_RULE`, `TARGET_HAS_MULTIPLE_LINKS` were replaced. Known limitation: the
 `DataTypeVO` catalog is optional; without a source the type name is `?` in `display.text`.
 
 ---
