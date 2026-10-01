@@ -1,0 +1,318 @@
+{
+  "schemaVersion": 1,
+  "artifact": {
+    "engine": "xslt",
+    "id": "MAP_00000000-0000-0000-0000-000000001001",
+    "rawHash": "sha256:e9f729c205e92c5d5639ed6d40cdaf4c638c16a68d11116f0ee66e08bf6f0619",
+    "eTag": "\"Jk8YU3526SO5jgeqT881Ug==\"",
+    "variantFields": [],
+    "sources": [
+      {
+        "role": "xslt",
+        "id": "MAP_00000000-0000-0000-0000-000000001001",
+        "rawHash": "sha256:e9f729c205e92c5d5639ed6d40cdaf4c638c16a68d11116f0ee66e08bf6f0619"
+      },
+      {
+        "role": "target-layout",
+        "id": "LAY_00000000-0000-0000-0000-00000000a002",
+        "rawHash": "sha256:fdc93b13928e53f4eaa2263c0fda54cee01e970b7873e5789b7288a9bb8dd655"
+      }
+    ]
+  },
+  "capabilities": {
+    "edit": false,
+    "editableOps": []
+  },
+  "trees": {
+    "input": {
+      "format": "xml",
+      "rootIds": [
+        "xslt:in:ORDEM"
+      ],
+      "available": true
+    },
+    "target": {
+      "layoutRef": "LAY_00000000-0000-0000-0000-00000000a002",
+      "format": "xml",
+      "rootIds": [
+        "GRT_00000000-0000-0000-0000-00000000e001"
+      ],
+      "available": true
+    }
+  },
+  "nodes": {
+    "GRT_00000000-0000-0000-0000-00000000e001": {
+      "tree": "target",
+      "type": "groupTag",
+      "name": "pedido",
+      "path": "pedido",
+      "order": 1,
+      "required": true,
+      "display": {
+        "text": "pedido    (+, 1, 1)",
+        "icon": "groupTag",
+        "linked": false
+      },
+      "props": {
+        "minOccurs": 1,
+        "maxOccurs": 1,
+        "acceptEmpty": false,
+        "extra": {
+          "IsContainsAttribute": "false",
+          "NotRealizeParser": "false"
+        }
+      }
+    },
+    "TAG_00000000-0000-0000-0000-00000000f001": {
+      "tree": "target",
+      "type": "tag",
+      "name": "numero",
+      "path": "pedido/numero",
+      "parentId": "GRT_00000000-0000-0000-0000-00000000e001",
+      "order": 1,
+      "required": true,
+      "display": {
+        "text": "numero    (+, ?)",
+        "icon": "tag",
+        "linked": true
+      },
+      "props": {
+        "useCData": false,
+        "containsAttribute": false,
+        "minOccurs": 1,
+        "maxOccurs": 1,
+        "length": 0,
+        "trim": "All",
+        "isStaticValue": false,
+        "dataType": {
+          "guid": "DAT_00000000-0000-0000-0000-00000000d001"
+        },
+        "extra": {
+          "StartValue": "1",
+          "IncrementValue": "1",
+          "AlignmentType": "Left",
+          "IsCaseSensitiveValue": "false",
+          "IsSequential": "false"
+        }
+      }
+    },
+    "GRT_00000000-0000-0000-0000-00000000e002": {
+      "tree": "target",
+      "type": "groupTag",
+      "name": "item",
+      "path": "pedido/item",
+      "parentId": "GRT_00000000-0000-0000-0000-00000000e001",
+      "order": 2,
+      "required": false,
+      "display": {
+        "text": "item    (-, 0, 999)",
+        "icon": "groupTag",
+        "linked": true
+      },
+      "props": {
+        "minOccurs": 0,
+        "maxOccurs": 999,
+        "acceptEmpty": false,
+        "extra": {
+          "IsContainsAttribute": "false",
+          "NotRealizeParser": "false"
+        }
+      }
+    },
+    "TAG_00000000-0000-0000-0000-00000000f002": {
+      "tree": "target",
+      "type": "tag",
+      "name": "produto",
+      "path": "pedido/item/produto",
+      "parentId": "GRT_00000000-0000-0000-0000-00000000e002",
+      "order": 1,
+      "required": true,
+      "display": {
+        "text": "produto    (+, ?)",
+        "icon": "tag",
+        "linked": true
+      },
+      "props": {
+        "useCData": false,
+        "containsAttribute": false,
+        "minOccurs": 1,
+        "maxOccurs": 1,
+        "length": 0,
+        "trim": "All",
+        "isStaticValue": false,
+        "extra": {
+          "AlignmentType": "Left"
+        }
+      }
+    },
+    "TAG_00000000-0000-0000-0000-00000000f003": {
+      "tree": "target",
+      "type": "tag",
+      "name": "qtd",
+      "path": "pedido/item/qtd",
+      "parentId": "GRT_00000000-0000-0000-0000-00000000e002",
+      "order": 2,
+      "required": true,
+      "display": {
+        "text": "qtd    (+, ?)",
+        "icon": "tag",
+        "linked": true
+      },
+      "props": {
+        "useCData": false,
+        "containsAttribute": false,
+        "minOccurs": 1,
+        "maxOccurs": 1,
+        "length": 0,
+        "trim": "All",
+        "isStaticValue": false,
+        "extra": {
+          "AlignmentType": "Left"
+        }
+      }
+    },
+    "xslt:in:ORDEM": {
+      "tree": "input",
+      "type": "line",
+      "name": "ORDEM",
+      "path": "ORDEM",
+      "order": 1,
+      "required": false,
+      "display": {
+        "text": "ORDEM    (-)",
+        "icon": "line",
+        "linked": false
+      },
+      "props": {}
+    },
+    "xslt:in:ORDEM/CAB": {
+      "tree": "input",
+      "type": "line",
+      "name": "CAB",
+      "path": "ORDEM/CAB",
+      "parentId": "xslt:in:ORDEM",
+      "order": 2,
+      "required": false,
+      "display": {
+        "text": "CAB    (-)",
+        "icon": "line",
+        "linked": false
+      },
+      "props": {}
+    },
+    "xslt:in:ORDEM/CAB/NumeroPedido": {
+      "tree": "input",
+      "type": "field",
+      "name": "NumeroPedido",
+      "path": "ORDEM/CAB/NumeroPedido",
+      "parentId": "xslt:in:ORDEM/CAB",
+      "order": 3,
+      "required": false,
+      "display": {
+        "text": "NumeroPedido    (-, ?)",
+        "icon": "field",
+        "linked": true
+      },
+      "props": {}
+    },
+    "xslt:in:ORDEM/ITENS": {
+      "tree": "input",
+      "type": "line",
+      "name": "ITENS",
+      "path": "ORDEM/ITENS",
+      "parentId": "xslt:in:ORDEM",
+      "order": 4,
+      "required": false,
+      "display": {
+        "text": "ITENS    (-)",
+        "icon": "line",
+        "linked": true
+      },
+      "props": {}
+    },
+    "xslt:in:ORDEM/ITENS/Codigo": {
+      "tree": "input",
+      "type": "field",
+      "name": "Codigo",
+      "path": "ORDEM/ITENS/Codigo",
+      "parentId": "xslt:in:ORDEM/ITENS",
+      "order": 5,
+      "required": false,
+      "display": {
+        "text": "Codigo    (-, ?)",
+        "icon": "field",
+        "linked": true
+      },
+      "props": {}
+    }
+  },
+  "links": {
+    "xslt:link:pedido/numero": {
+      "sourceId": "xslt:in:ORDEM/CAB/NumeroPedido",
+      "targetId": "TAG_00000000-0000-0000-0000-00000000f001",
+      "order": 1,
+      "display": {
+        "text": "NumeroPedido_numero",
+        "icon": "linkMapping",
+        "underTargetId": "TAG_00000000-0000-0000-0000-00000000f001"
+      },
+      "opts": {},
+      "iterates": false
+    },
+    "xslt:link:pedido/item": {
+      "sourceId": "xslt:in:ORDEM/ITENS",
+      "targetId": "GRT_00000000-0000-0000-0000-00000000e002",
+      "order": 2,
+      "display": {
+        "text": "ITENS_item",
+        "icon": "linkMapping",
+        "underTargetId": "GRT_00000000-0000-0000-0000-00000000e002"
+      },
+      "opts": {},
+      "iterates": true
+    },
+    "xslt:link:pedido/item/produto": {
+      "sourceId": "xslt:in:ORDEM/ITENS/Codigo",
+      "targetId": "TAG_00000000-0000-0000-0000-00000000f002",
+      "order": 3,
+      "display": {
+        "text": "Codigo_produto",
+        "icon": "linkMapping",
+        "underTargetId": "TAG_00000000-0000-0000-0000-00000000f002"
+      },
+      "opts": {},
+      "iterates": false
+    }
+  },
+  "rules": {
+    "xslt:rule:pedido/item/qtd": {
+      "anchorId": "TAG_00000000-0000-0000-0000-00000000f003",
+      "display": {
+        "text": "Rule_qtd",
+        "icon": "rule",
+        "underTargetId": "TAG_00000000-0000-0000-0000-00000000f003"
+      },
+      "name": "xsl:choose",
+      "code": "<xsl:choose xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\">\n              <xsl:when test=\"Quantidade &gt; 0\"><xsl:value-of select=\"Quantidade\" /></xsl:when>\n              <xsl:otherwise>1</xsl:otherwise>\n            </xsl:choose>",
+      "reads": [
+        "ORDEM/ITENS/Quantidade"
+      ],
+      "writes": [
+        "pedido/item/qtd"
+      ],
+      "functions": [],
+      "prePos": false,
+      "opaque": [
+        {
+          "reason": "xsl:choose",
+          "span": [
+            0,
+            231
+          ]
+        }
+      ]
+    }
+  },
+  "datatypes": {},
+  "diagnostics": []
+}

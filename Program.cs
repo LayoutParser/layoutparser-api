@@ -554,6 +554,8 @@ try
     builder.Services.AddScoped<LayoutParserApi.Services.StudioModel.IStudioModelAdapter, LayoutParserApi.Services.StudioModel.Sysmiddle.SysmiddleStudioModelAdapter>();
     builder.Services.AddScoped<LayoutParserApi.Services.StudioModel.Tcl.ITclSource, LayoutParserApi.Services.StudioModel.Tcl.LayoutDerivedTclSource>();
     builder.Services.AddScoped<LayoutParserApi.Services.StudioModel.IStudioModelAdapter, LayoutParserApi.Services.StudioModel.Tcl.TclStudioModelAdapter>();
+    builder.Services.AddScoped<LayoutParserApi.Services.StudioModel.Xslt.IXsltSource, LayoutParserApi.Services.StudioModel.Xslt.MapperXsltSource>();
+    builder.Services.AddScoped<LayoutParserApi.Services.StudioModel.IStudioModelAdapter, LayoutParserApi.Services.StudioModel.Xslt.XsltStudioModelAdapter>();
     builder.Services.AddScoped<LayoutParserApi.Services.Interfaces.IStudioModelService, LayoutParserApi.Services.StudioModel.StudioModelService>();
     // ✅ Slice 5 (issue #231): compilação determinística MappingDraftRule[] → XSLT/TCL + Fiscal Test
     // Lab. Mesmo banco/padrão ADO.NET; compile/test-run reaproveitam CanonicalDiffer/XsdValidationService
