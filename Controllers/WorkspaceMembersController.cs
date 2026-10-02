@@ -178,7 +178,23 @@ namespace LayoutParserApi.Controllers
                 var bucket = (long)(now - DateTime.UnixEpoch).TotalSeconds / (long)cooldown.TotalSeconds;
                 var dedupeKey = $"{key}:resend:{bucket}";
                 var (subject, body) = WelcomeEmailTemplate.Render(workspace.Name, _emailOptions.PortalUrl);
-                var r = await _outbox.EnqueueAsync(member.Email, WelcomeEmailTemplate.Name, dedupeKey, subject, body, cancellationToken);
+                EnqueueResult r;
+                try
+                {
+                    r = await _outbox.EnqueueAsync(member.Email, WelcomeEmailTemplate.Name, dedupeKey, subject, body, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Timeout do lock de dedupe (50001) ou SQL fora do ar: 503 claro e retentável, nunca 500 cru.
+                    _logger.LogWarning(ex, "Outbox indisponível ao reenviar convite (WorkspaceId={WorkspaceId}, Destinatario={Destinatario})",
+                        workspaceId, EmailMasking.Mask(member.Email));
+                    Response.Headers["Retry-After"] = "5";
+                    return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                    {
+                        code = "outbox_busy",
+                        error = "A fila de e-mails está ocupada no momento; tente novamente em instantes."
+                    });
+                }
                 _logger.LogInformation("Reenvio de convite: e-mail {EmailId} (Enfileirado={Enqueued}, Template={Template}, WorkspaceId={WorkspaceId}, Destinatario={Destinatario}, SmtpConfigured={SmtpConfigured})",
                     r.EmailId, r.Enqueued, WelcomeEmailTemplate.Name, workspaceId, EmailMasking.Mask(member.Email), _emailSender.IsConfigured);
 

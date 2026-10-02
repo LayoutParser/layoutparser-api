@@ -279,8 +279,11 @@ namespace LayoutParserApi.Services.Database
 -- (re)verificadas DENTRO do lock, então instâncias simultâneas serializam e a 2ª encontra tudo pronto.
 BEGIN TRY
     BEGIN TRANSACTION;
-    EXEC sp_getapplock @Resource = 'lp-ddl-tbGeneratedMapperArtifact', @LockMode = 'Exclusive',
-                       @LockOwner = 'Transaction', @LockTimeout = 30000;
+    DECLARE @rc INT;
+    EXEC @rc = sp_getapplock @Resource = 'lp-ddl-tbGeneratedMapperArtifact', @LockMode = 'Exclusive',
+                             @LockOwner = 'Transaction', @LockTimeout = 30000;
+    -- Sem o lock (timeout/deadlock) NÃO altera nada: o THROW cai no CATCH, que reverte e libera.
+    IF @rc < 0 THROW 50000, 'Não foi possível obter o lock da migração do esquema; tente novamente.', 1;
 
     IF OBJECT_ID('dbo.tbGeneratedMapperArtifact', 'U') IS NULL
     CREATE TABLE dbo.tbGeneratedMapperArtifact (

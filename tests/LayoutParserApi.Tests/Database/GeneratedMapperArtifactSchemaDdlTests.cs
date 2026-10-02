@@ -16,5 +16,15 @@ namespace LayoutParserApi.Tests.Database
             Assert.True(lockPos < ddl.IndexOf("ADD ProjectId", StringComparison.Ordinal));
             Assert.True(lockPos < ddl.IndexOf("ADD ProjectKey", StringComparison.Ordinal));
         }
+
+        [Fact]
+        public void SchemaDdl_FalhaSemLockAntesDeQualquerAlteracao()
+        {
+            var ddl = SqlGeneratedMapperArtifactStore.SchemaDdl;
+            Assert.Contains("EXEC @rc = sp_getapplock", ddl, StringComparison.Ordinal);
+            var guard = ddl.IndexOf("IF @rc < 0 THROW 50000", StringComparison.Ordinal);
+            Assert.True(guard > ddl.IndexOf("sp_getapplock", StringComparison.Ordinal));
+            Assert.True(guard < ddl.IndexOf("CREATE TABLE", StringComparison.Ordinal));
+        }
     }
 }

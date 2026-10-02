@@ -199,6 +199,19 @@ namespace LayoutParserApi.Tests.Controllers
         }
 
         [Fact]
+        public async Task Reenvio_com_falha_no_outbox_retorna_503_outbox_busy_com_retry_after()
+        {
+            var (m, fm) = PendingMember();
+            var ctrl = Create(fm, outbox: new FakeOutbox { Throw = true });
+            ctrl.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+            var result = await ctrl.ResendInvite(WorkspaceId, m.UserId, default);
+            var obj = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(503, obj.StatusCode);
+            Assert.Contains("outbox_busy", System.Text.Json.JsonSerializer.Serialize(obj.Value));
+            Assert.True(int.Parse(ctrl.Response.Headers["Retry-After"].ToString()) > 0);
+        }
+
+        [Fact]
         public async Task Reenvio_com_teto_diario_atingido_retorna_429_daily_limit()
         {
             var (m, fm) = PendingMember();
