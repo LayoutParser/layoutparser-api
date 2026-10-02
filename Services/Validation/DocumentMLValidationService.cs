@@ -35,9 +35,17 @@ namespace LayoutParserApi.Services.Validation
             _learningDataPath = configuration["ML:LearningDataPath"] ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MLData", "DocumentPatterns");
             _trainingSamplesPath = configuration["ML:TrainingSamplesPath"] ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MLData", "TrainingSamples");
 
-            // Garantir que diretório existe
-            Directory.CreateDirectory(_learningDataPath);
-            Directory.CreateDirectory(_trainingSamplesPath);
+            // ✅ Resiliência: sem permissão de escrita (ex.: serviço Linux sem acesso ao diretório da app),
+            // o serviço degrada (sem persistir aprendizado) em vez de derrubar o request principal.
+            try
+            {
+                Directory.CreateDirectory(_learningDataPath);
+                Directory.CreateDirectory(_trainingSamplesPath);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                _logger.LogWarning(ex, "Não foi possível criar diretórios de ML ({LearningPath}, {SamplesPath}); aprendizado em disco desativado", _learningDataPath, _trainingSamplesPath);
+            }
 
             // Carregar padrões aprendidos
             LoadLearnedPatterns();
