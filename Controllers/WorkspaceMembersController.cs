@@ -76,7 +76,8 @@ namespace LayoutParserApi.Controllers
             return await Guarded(workspaceId, cancellationToken, async workspace =>
             {
                 var list = await _members.ListAsync(workspaceId, cancellationToken);
-                return Ok(list.Select(ToDto));
+                var invite = await InviteStatusesAsync(workspaceId, cancellationToken);
+                return Ok(list.Select(m => ToDto(m, invite)));
             });
         }
 
@@ -128,13 +129,17 @@ namespace LayoutParserApi.Controllers
         /// <summary>Boas-vindas best-effort: qualquer falha aqui NUNCA desfaz o vínculo já gravado.</summary>
         private async Task TryEnqueueWelcomeAsync(WorkspaceSummary workspace, string email, CancellationToken cancellationToken)
         {
-            if (!_emailSender.IsConfigured)
-                return;
-
+            // Sempre registra a linha (mesmo sem SMTP): o rastreio mostra "pending" + smtpConfigured=false.
             try
             {
                 var (subject, body) = WelcomeEmailTemplate.Render(workspace.Name, _emailOptions.PortalUrl);
-                await _outbox.EnqueueAsync(email, WelcomeEmailTemplate.Name, workspace.WorkspaceId.ToString("N"), subject, body, cancellationToken);
+                var r = await _outbox.EnqueueAsync(email, WelcomeEmailTemplate.Name, workspace.WorkspaceId.ToString("N"), subject, body, cancellationToken);
+                if (r.Enqueued)
+                    _logger.LogInformation("E-mail {EmailId} enfileirado (Template={Template}, WorkspaceId={WorkspaceId}, Destinatario={Destinatario}, SmtpConfigured={SmtpConfigured})",
+                        r.EmailId, WelcomeEmailTemplate.Name, workspace.WorkspaceId, EmailMasking.Mask(email), _emailSender.IsConfigured);
+                else
+                    _logger.LogInformation("E-mail deduplicado (já existe {EmailId} nas últimas 24h; Template={Template}, WorkspaceId={WorkspaceId}, Destinatario={Destinatario})",
+                        r.EmailId, WelcomeEmailTemplate.Name, workspace.WorkspaceId, EmailMasking.Mask(email));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -171,8 +176,20 @@ namespace LayoutParserApi.Controllers
             }
         }
 
-        private static object ToDto(WorkspaceMemberInfo m) => new
+        /// <summary>Status do último e-mail de convite por destinatário; best-effort (falha = sem o campo).</summary>
+        private async Task<IReadOnlyDictionary<string, string>?> InviteStatusesAsync(Guid workspaceId, CancellationToken ct)
         {
+            try { return await _outbox.GetLatestStatusByEmailAsync(workspaceId.ToString("N"), ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Não foi possível obter o status dos e-mails de convite do workspace {WorkspaceId}.", workspaceId);
+                return null;
+            }
+        }
+
+        private static object ToDto(WorkspaceMemberInfo m, IReadOnlyDictionary<string, string>? invite = null) => new
+        {
+            inviteEmailStatus = m.Email != null && invite != null && invite.TryGetValue(m.Email, out var st) ? st : null,
             userId = m.UserId,
             displayName = m.DisplayName,
             email = m.Email,

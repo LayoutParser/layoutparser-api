@@ -82,12 +82,17 @@ namespace LayoutParserApi.Tests.Controllers
         {
             public List<(string To, string Subject, string Body)> Enqueued { get; } = new();
             public bool Throw { get; set; }
-            public Task<bool> EnqueueAsync(string toEmail, string template, string dedupeKey, string subject, string body, CancellationToken cancellationToken)
+            public Task<EnqueueResult> EnqueueAsync(string toEmail, string template, string dedupeKey, string subject, string body, CancellationToken cancellationToken)
             {
                 if (Throw) throw new InvalidOperationException("sql fora");
                 Enqueued.Add((toEmail, subject, body));
-                return Task.FromResult(true);
+                return Task.FromResult(new EnqueueResult(true, Guid.NewGuid()));
             }
+            public List<OutboxEmailStatus> Rows { get; } = new();
+            public Task<IReadOnlyList<OutboxEmailStatus>> ListAsync(string dedupeKey, string? toEmail, int skip, int take, CancellationToken cancellationToken)
+                => Task.FromResult<IReadOnlyList<OutboxEmailStatus>>(Rows.Where(r => toEmail == null || r.ToEmail == toEmail).Skip(skip).Take(take).ToList());
+            public Task<IReadOnlyDictionary<string, string>> GetLatestStatusByEmailAsync(string dedupeKey, CancellationToken cancellationToken)
+                => Task.FromResult<IReadOnlyDictionary<string, string>>(Rows.ToDictionary(r => r.ToEmail, r => r.Status));
             public Task<OutboxEmail?> ClaimNextAsync(int maxAttempts, CancellationToken cancellationToken) => Task.FromResult<OutboxEmail?>(null);
             public Task MarkSentAsync(Guid emailId, CancellationToken cancellationToken) => Task.CompletedTask;
             public Task MarkFailedAsync(Guid emailId, string error, int maxAttempts, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -117,13 +122,21 @@ namespace LayoutParserApi.Tests.Controllers
         }
 
         [Fact]
-        public async Task Sem_smtp_configurado_nao_enfileira()
+        public async Task Sem_smtp_configurado_ainda_enfileira_para_rastreio()
         {
             var outbox = new FakeOutbox();
             await Create(new FakeMembers(), outbox: outbox, configured: false)
                 .Add(WorkspaceId, new AddWorkspaceMemberRequest("a@b.com", "viewer"), default);
-            Assert.Empty(outbox.Enqueued);
+            Assert.Single(outbox.Enqueued);
         }
+
+        [Theory]
+        [InlineData("luan.mota0102@gmail.com", "l***@gmail.com")]
+        [InlineData("a@b.com", "a***@b.com")]
+        [InlineData("semarroba", "***")]
+        [InlineData(null, "***")]
+        public void Mascara_destinatario_sem_expor_o_endereco(string? raw, string esperado)
+            => Assert.Equal(esperado, EmailMasking.Mask(raw));
 
         private static WorkspaceMembersController Create(FakeMembers members, FakeWorkspaces? workspaces = null, FakeOutbox? outbox = null, bool configured = false)
             => new(members, workspaces ?? new FakeWorkspaces(), new FakeCurrentUser(), outbox ?? new FakeOutbox(), new FakeSender { Configured = configured },
