@@ -275,54 +275,51 @@ namespace LayoutParserApi.Services.Database
         //  * PK passa de (MapperGuid) para (MapperGuid, ProjectKey): linhas existentes viram ProjectKey=''
         //    sem perda; a troca roda em transação com applock e só se a PK ainda for a antiga.
         public static readonly string SchemaDdl = @"
-IF OBJECT_ID('dbo.tbGeneratedMapperArtifact', 'U') IS NULL
-CREATE TABLE dbo.tbGeneratedMapperArtifact (
-    MapperGuid NVARCHAR(64) NOT NULL,
-    ProjectId NVARCHAR(32) NULL,
-    ProjectKey AS (ISNULL(ProjectId, N'')) PERSISTED NOT NULL,
-    Status NVARCHAR(20) NOT NULL,
-    Content NVARCHAR(MAX) NULL,
-    CoverageJson NVARCHAR(MAX) NULL,
-    ValidationBasis NVARCHAR(30) NULL,
-    MapperVoHash NVARCHAR(64) NULL,
-    CorrelationId NVARCHAR(100) NULL,
-    GeneratedAtUtc DATETIME2 NULL,
-    UpdatedAtUtc DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-    CONSTRAINT PK_tbGeneratedMapperArtifact PRIMARY KEY (MapperGuid, ProjectKey)
-);
+-- Todo o bloco (CREATE + ADD COLUMN + troca de PK) roda sob UM applock transacional: as condições são
+-- (re)verificadas DENTRO do lock, então instâncias simultâneas serializam e a 2ª encontra tudo pronto.
+BEGIN TRY
+    BEGIN TRANSACTION;
+    EXEC sp_getapplock @Resource = 'lp-ddl-tbGeneratedMapperArtifact', @LockMode = 'Exclusive',
+                       @LockOwner = 'Transaction', @LockTimeout = 30000;
 
-IF COL_LENGTH('dbo.tbGeneratedMapperArtifact', 'ProjectId') IS NULL
-    ALTER TABLE dbo.tbGeneratedMapperArtifact ADD ProjectId NVARCHAR(32) NULL;
+    IF OBJECT_ID('dbo.tbGeneratedMapperArtifact', 'U') IS NULL
+    CREATE TABLE dbo.tbGeneratedMapperArtifact (
+        MapperGuid NVARCHAR(64) NOT NULL,
+        ProjectId NVARCHAR(32) NULL,
+        ProjectKey AS (ISNULL(ProjectId, N'')) PERSISTED NOT NULL,
+        Status NVARCHAR(20) NOT NULL,
+        Content NVARCHAR(MAX) NULL,
+        CoverageJson NVARCHAR(MAX) NULL,
+        ValidationBasis NVARCHAR(30) NULL,
+        MapperVoHash NVARCHAR(64) NULL,
+        CorrelationId NVARCHAR(100) NULL,
+        GeneratedAtUtc DATETIME2 NULL,
+        UpdatedAtUtc DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT PK_tbGeneratedMapperArtifact PRIMARY KEY (MapperGuid, ProjectKey)
+    );
 
-IF COL_LENGTH('dbo.tbGeneratedMapperArtifact', 'ProjectKey') IS NULL
-    EXEC(N'ALTER TABLE dbo.tbGeneratedMapperArtifact ADD ProjectKey AS (ISNULL(ProjectId, N'''')) PERSISTED NOT NULL;');
+    IF COL_LENGTH('dbo.tbGeneratedMapperArtifact', 'ProjectId') IS NULL
+        EXEC(N'ALTER TABLE dbo.tbGeneratedMapperArtifact ADD ProjectId NVARCHAR(32) NULL;');
 
-IF (SELECT COUNT(*) FROM sys.indexes i
-      JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
-     WHERE i.object_id = OBJECT_ID('dbo.tbGeneratedMapperArtifact') AND i.is_primary_key = 1) = 1
-BEGIN
-    BEGIN TRY
-        BEGIN TRANSACTION;
-        EXEC sp_getapplock @Resource = 'lp-ddl-tbGeneratedMapperArtifact', @LockMode = 'Exclusive',
-                           @LockOwner = 'Transaction', @LockTimeout = 30000;
-        -- Re-checa sob o lock: outra instância pode ter migrado entre o IF e o applock.
-        IF (SELECT COUNT(*) FROM sys.indexes i
-              JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
-             WHERE i.object_id = OBJECT_ID('dbo.tbGeneratedMapperArtifact') AND i.is_primary_key = 1) = 1
-        BEGIN
-            DECLARE @pk SYSNAME = (SELECT name FROM sys.key_constraints
-                                    WHERE parent_object_id = OBJECT_ID('dbo.tbGeneratedMapperArtifact') AND type = 'PK');
-            DECLARE @drop NVARCHAR(400) = N'ALTER TABLE dbo.tbGeneratedMapperArtifact DROP CONSTRAINT ' + QUOTENAME(@pk);
-            EXEC(@drop);
-            EXEC(N'ALTER TABLE dbo.tbGeneratedMapperArtifact ADD CONSTRAINT PK_tbGeneratedMapperArtifact PRIMARY KEY (MapperGuid, ProjectKey);');
-        END
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-        THROW;
-    END CATCH
-END";
+    IF COL_LENGTH('dbo.tbGeneratedMapperArtifact', 'ProjectKey') IS NULL
+        EXEC(N'ALTER TABLE dbo.tbGeneratedMapperArtifact ADD ProjectKey AS (ISNULL(ProjectId, N'''')) PERSISTED NOT NULL;');
+
+    IF (SELECT COUNT(*) FROM sys.indexes i
+          JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+         WHERE i.object_id = OBJECT_ID('dbo.tbGeneratedMapperArtifact') AND i.is_primary_key = 1) = 1
+    BEGIN
+        DECLARE @pk SYSNAME = (SELECT name FROM sys.key_constraints
+                                WHERE parent_object_id = OBJECT_ID('dbo.tbGeneratedMapperArtifact') AND type = 'PK');
+        DECLARE @drop NVARCHAR(400) = N'ALTER TABLE dbo.tbGeneratedMapperArtifact DROP CONSTRAINT ' + QUOTENAME(@pk);
+        EXEC(@drop);
+        EXEC(N'ALTER TABLE dbo.tbGeneratedMapperArtifact ADD CONSTRAINT PK_tbGeneratedMapperArtifact PRIMARY KEY (MapperGuid, ProjectKey);');
+    END
+    COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    THROW;
+END CATCH";
 
         internal static async Task EnsureSchemaAsync(SqlConnection connection, CancellationToken cancellationToken)
         {

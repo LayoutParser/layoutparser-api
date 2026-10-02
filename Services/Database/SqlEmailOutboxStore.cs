@@ -28,16 +28,28 @@ namespace LayoutParserApi.Services.Database
         {
             using var c = await OpenAsync(ct);
             using var cmd = new SqlCommand(
-                @"DECLARE @Existing UNIQUEIDENTIFIER = (SELECT TOP (1) EmailId FROM dbo.tbLpEmailOutbox
+                @"SET XACT_ABORT ON;
+                  BEGIN TRANSACTION;
+                  -- Lock por chave de dedupe (hash): serializa SELECT+INSERT só entre quem disputa a mesma chave.
+                  -- Um único recurso por transação => sem deadlock entre chaves.
+                  DECLARE @Res NVARCHAR(255) = N'lp-outbox:' + CONVERT(NVARCHAR(64), HASHBYTES('SHA2_256', @To + N'|' + @Template + N'|' + @Key), 2);
+                  DECLARE @rc INT;
+                  EXEC @rc = sp_getapplock @Resource = @Res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000;
+                  IF @rc < 0 THROW 50001, 'Timeout no lock de dedupe do outbox.', 1;
+                  DECLARE @Existing UNIQUEIDENTIFIER = (SELECT TOP (1) EmailId FROM dbo.tbLpEmailOutbox
                         WHERE ToEmail = @To AND Template = @Template AND DedupeKey = @Key
                           AND CreatedAt > DATEADD(HOUR, -24, SYSUTCDATETIME()) ORDER BY CreatedAt DESC);
                   IF @Existing IS NOT NULL
+                  BEGIN
+                    COMMIT TRANSACTION;
                     SELECT CAST(0 AS BIT), @Existing;
+                  END
                   ELSE
                   BEGIN
                     DECLARE @New UNIQUEIDENTIFIER = NEWID();
                     INSERT INTO dbo.tbLpEmailOutbox (EmailId, ToEmail, Template, DedupeKey, Subject, Body, Status, Attempts, NextAttemptAt, CreatedAt)
                     VALUES (@New, @To, @Template, @Key, @Subject, @Body, 'pending', 0, SYSUTCDATETIME(), SYSUTCDATETIME());
+                    COMMIT TRANSACTION;
                     SELECT CAST(1 AS BIT), @New;
                   END", c);
             cmd.Parameters.AddWithValue("@To", toEmail);
