@@ -20,7 +20,9 @@ namespace LayoutParserApi.Models.Transformation
         public string Status { get; set; } = "";
 
         /// <summary>Taxonomia estável: "no_mapper" | "map_not_found" | "xsl_not_found" |
-        /// "configuration_error" | "runner_unavailable" | "execution_error" | "not_applicable"
+        /// "configuration_error" | "runner_unavailable" | "execution_error" | "not_applicable";
+        /// no pathway sysmiddle via runner HTTP (#641) também: "queue_full" | "mapper_not_found" |
+        /// "transform_failed" | "timeout" | "invalid_request" | "runtime_error"
         /// (§4.3 do desenho). String, não enum exposto, pelo mesmo motivo de <see cref="Status"/>.</summary>
         public string Code { get; set; } = "";
 

@@ -19,12 +19,15 @@ namespace LayoutParserApi.Services.Transformation.LowCode
         // multi-candidato). Se dois uploads diferentes chegarem ao mesmo tempo, ambos multi-candidato,
         // o limite de concorrência do runner ainda é respeitado no total. Ver LowCode:MaxConcurrentRunners.
         private readonly SemaphoreSlim _runnerSemaphore;
+        private readonly LowCodeRunnerHttpClient? _httpRunner;
 
         public LowCodeTransformationService(
             ILogger<LowCodeTransformationService> logger,
             IOptions<LowCodeRunnerOptions> options,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            LowCodeRunnerHttpClient? httpRunner = null)
         {
+            _httpRunner = httpRunner;
             _logger = logger;
             _opt = options.Value;
             _configuration = configuration;
@@ -60,8 +63,34 @@ namespace LayoutParserApi.Services.Transformation.LowCode
             sysmiddleDir ??= _opt.SysmiddleDir;
             mapperName ??= _opt.DefaultMapperName;
 
+            // ✅ Issue #641: BaseUrl configurada => runner HTTP (contrato v1), sem .exe nem arquivos temporários.
+            if (LowCodeRunnerHttpClient.IsConfigured(_opt) && _httpRunner != null)
+            {
+                if (string.IsNullOrWhiteSpace(mapperId) && string.IsNullOrWhiteSpace(mapperName))
+                    throw new InvalidOperationException("Informe mapperId ou mapperName (ou configure LowCode:DefaultMapperName)");
+                // O contrato exige EXATAMENTE um: mapperId (MapperGuid) tem precedência.
+                var idHttp = string.IsNullOrWhiteSpace(mapperId) ? null : mapperId;
+                var nameHttp = idHttp == null ? mapperName : null;
+
+                await _runnerSemaphore.WaitAsync(cancellationToken);
+                try
+                {
+                    _logger.LogInformation("Executando transformação low-code via HTTP: corr={CorrelationId} mapperId={MapperId}, mapperName={MapperName}",
+                        correlationId, idHttp, nameHttp);
+                    var resp = await _httpRunner.TransformAsync(inputContent ?? "", fileName ?? "document.txt", idHttp, nameHttp, correlationId, cancellationToken);
+                    if (resp.Warnings.Count > 0)
+                        _logger.LogInformation("Runner low-code HTTP devolveu {WarningCount} warning(s) (corr={CorrelationId}, durationMs={DurationMs})",
+                            resp.Warnings.Count, correlationId, resp.DurationMs);
+                    return resp.Output;
+                }
+                finally
+                {
+                    _runnerSemaphore.Release();
+                }
+            }
+
             if (string.IsNullOrWhiteSpace(_opt.RunnerPath))
-                throw new InvalidOperationException("LowCode:RunnerPath não configurado");
+                throw new LowCodeRunnerException(LowCodeRunnerException.RunnerUnavailable, "runner indisponível neste host");
             if (string.IsNullOrWhiteSpace(sysmiddleDir))
                 throw new InvalidOperationException("LowCode:SysmiddleDir não configurado");
             if (string.IsNullOrWhiteSpace(globalFolder))

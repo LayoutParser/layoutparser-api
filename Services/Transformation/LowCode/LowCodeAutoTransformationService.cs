@@ -173,7 +173,8 @@ namespace LayoutParserApi.Services.Transformation.LowCode
                         PackageGuid = mapper.PackageGuid,
                         Success = false,
                         // Saneado: este texto sai no payload 200 do parse (spec §3.1).
-                        ErrorMessage = LowCodeErrorSanitizer.ForWire(ex)
+                        ErrorMessage = LowCodeErrorSanitizer.ForWire(ex),
+                        ErrorCode = LowCodeRunnerException.CodeOf(ex)
                     };
 
                     // O índice FECHA mesmo em falha: sem isto o "processing" gravado acima ficaria
@@ -356,7 +357,8 @@ namespace LayoutParserApi.Services.Transformation.LowCode
                         PackageGuid = mapper.PackageGuid,
                         Success = false,
                         // Saneado: este texto sai no payload 200 do parse (spec §3.1).
-                        ErrorMessage = LowCodeErrorSanitizer.ForWire(ex)
+                        ErrorMessage = LowCodeErrorSanitizer.ForWire(ex),
+                        ErrorCode = LowCodeRunnerException.CodeOf(ex)
                     };
                 }
             });

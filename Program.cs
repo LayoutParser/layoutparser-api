@@ -658,7 +658,7 @@ try
             sp => new DecryptorHealthCheck(sp.GetRequiredService<IDecryptionService>()),
             HealthStatus.Unhealthy, new[] { "ready" }))
         .Add(new HealthCheckRegistration("lowcode-runner",
-            sp => new LowCodeRunnerHealthCheck(sp.GetRequiredService<IOptions<LowCodeRunnerOptions>>()),
+            sp => new LowCodeRunnerHealthCheck(sp.GetRequiredService<IOptions<LowCodeRunnerOptions>>(), sp.GetService<LowCodeRunnerHttpClient>()),
             HealthStatus.Unhealthy, new[] { "ready" }))
         // ✅ A2 (gate #107/#108): Ollama:Url ausente/localhost é config órfã neste projeto — o Ollama
         // real roda numa VM Linux separada. Degraded (200): diagnóstico via IA é opcional.
@@ -874,6 +874,18 @@ try
            "LowCode__AllowedPackageGuids__0 (e demais indices) com os PackageGuid permitidos deste host, " +
            "ou remova a secao LowCode inteira se este host nao usa low-code.")
         .ValidateOnStart();
+    // ✅ Issue #641: cliente HTTP do runner (contrato v1). Só é usado quando LowCode:BaseUrl está preenchida.
+    // ConnectTimeout curto: conexão recusada/DNS lento vira runner_unavailable rápido em vez de segurar 200s.
+    var lowCodeHttpSection = builder.Configuration.GetSection("LowCode");
+    var lowCodeBaseUrl = lowCodeHttpSection["BaseUrl"];
+    var lowCodeHttpTimeout = int.TryParse(lowCodeHttpSection["HttpTimeoutSeconds"], out var lcTo) && lcTo > 0 ? lcTo : 200;
+    builder.Services.AddHttpClient(LowCodeRunnerHttpClient.HttpClientName, client =>
+    {
+        if (Uri.TryCreate(lowCodeBaseUrl, UriKind.Absolute, out var lcUri))
+            client.BaseAddress = lcUri;
+        client.Timeout = TimeSpan.FromSeconds(lowCodeHttpTimeout);
+    }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(5) });
+    builder.Services.AddSingleton<LowCodeRunnerHttpClient>();
     builder.Services.AddSingleton<LowCodeTransformationService>();
     // ✅ Store/índice das transformações low-code: Singleton porque é consumido pelos Singletons do
     // pathway (auto-transform) e não guarda estado por request. Redis é OPCIONAL — resolvido por
@@ -965,7 +977,9 @@ try
         else
             Log.Information("LowCode:Package configurado: {Package}", lowCodeOpt.Package);
 
-        if (string.IsNullOrWhiteSpace(lowCodeOpt.RunnerPath))
+        if (!string.IsNullOrWhiteSpace(lowCodeOpt.BaseUrl))
+            Log.Information("LowCode:BaseUrl configurada ({BaseUrl}) — transformações low-code via runner HTTP (RunnerPath ignorado).", lowCodeOpt.BaseUrl);
+        else if (string.IsNullOrWhiteSpace(lowCodeOpt.RunnerPath))
             Log.Warning("LowCode:RunnerPath não configurado — nenhuma transformação low-code é possível.");
         else if (!File.Exists(lowCodeOpt.RunnerPath))
             Log.Warning("LowCode:RunnerPath aponta para um arquivo que NÃO EXISTE: {RunnerPath}. " +
@@ -977,7 +991,7 @@ try
                      ("LowCode:GlobalFolder", lowCodeOpt.GlobalFolder)
                  })
         {
-            if (string.IsNullOrWhiteSpace(valor))
+            if (string.IsNullOrWhiteSpace(valor) && string.IsNullOrWhiteSpace(lowCodeOpt.BaseUrl))
                 Log.Warning("{Chave} não configurado — a transformação low-code falha na validação de entrada.", chave);
         }
 
