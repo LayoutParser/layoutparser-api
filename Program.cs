@@ -686,6 +686,7 @@ try
     // Reconstrução reversa best-effort XML->TXT (issue #151, Fase 4) — sem estado, mesmo grupo.
     builder.Services.AddScoped<LayoutParserApi.Services.XmlAnalysis.ReverseReconstructionService>();
     builder.Services.AddScoped<MqSeriesToXmlTransformer>();
+    builder.Services.AddSingleton<IGeneratedXslResolver, GeneratedXslResolver>();
     builder.Services.AddScoped<TransformationPipelineService>();
     builder.Services.AddScoped<TclGeneratorService>();
     builder.Services.AddScoped<XslGeneratorService>();
