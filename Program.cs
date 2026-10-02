@@ -593,6 +593,9 @@ try
     builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IMappingCatalogSource, LayoutParserApi.Services.Catalog.NeogridCatalogSource>();
     // ✅ Issue #630: adaptador Own (tbGeneratedMapperArtifact, somente SELECT via IGeneratedMapperArtifactStore).
     builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IMappingCatalogSource, LayoutParserApi.Services.Catalog.OwnArtifactCatalogSource>();
+    // ✅ Issue #633: adaptador ConnectUs (SOMENTE LEITURA, só SELECT em Database:*); desligado por default no sync.
+    builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IConnectUsMapperReader, LayoutParserApi.Services.Catalog.SqlConnectUsMapperReader>();
+    builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IMappingCatalogSource, LayoutParserApi.Services.Catalog.ConnectUsCatalogSource>();
     // ✅ Issue #631: consultas do catálogo unificado (árvore lida do índice local) + flags de sync por adaptador.
     builder.Services.Configure<LayoutParserApi.Services.Catalog.MappingCatalogOptions>(builder.Configuration.GetSection("MappingCatalog"));
     builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IMappingCatalogService, LayoutParserApi.Services.Catalog.MappingCatalogService>();
@@ -609,6 +612,8 @@ try
         builder.Configuration.GetSection("GeneratedMapperSweep"));
     builder.Services.AddSingleton<LayoutParserApi.Services.Transformation.Ai.GeneratedMapperGenerationLimiter>();
     builder.Services.AddScoped<LayoutParserApi.Services.Transformation.Ai.IGeneratedMapperArtifactService, LayoutParserApi.Services.Transformation.Ai.GeneratedMapperArtifactService>();
+    // Issue #642: criação automática do mapeador ausente quando o pathway tcl-xsl cai em map_not_found/xsl_not_found.
+    builder.Services.AddSingleton<LayoutParserApi.Services.Transformation.Ai.IMissingMapperGenerationTrigger, LayoutParserApi.Services.Transformation.Ai.MissingMapperGenerationTrigger>();
     builder.Services.AddScoped<LayoutParserApi.Services.Transformation.Ai.IGeneratedMapperListService, LayoutParserApi.Services.Transformation.Ai.GeneratedMapperListService>();
     // Job periódico (issue #473): varre tbMapper e dispara geração para quem não tem candidato ou está
     // stale, reaproveitando GetOrTriggerAsync acima — não bloqueia o startup (delay inicial de 2min).
