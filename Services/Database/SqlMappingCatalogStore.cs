@@ -1,6 +1,8 @@
 using LayoutParserApi.Models.Catalog;
 using LayoutParserApi.Services.Interfaces;
 
+using System.Data;
+
 using Microsoft.Data.SqlClient;
 
 namespace LayoutParserApi.Services.Database
@@ -34,51 +36,68 @@ namespace LayoutParserApi.Services.Database
             => ExecuteAsync("UpsertSource", async (connection, ct) =>
             {
                 using var command = new SqlCommand(
-                    @"MERGE dbo.tbMappingCatalogSource AS t
+                    @"MERGE dbo.tbMappingCatalogSource WITH (HOLDLOCK) AS t
                       USING (SELECT @SourceSystem AS SourceSystem) AS s ON t.SourceSystem = s.SourceSystem
                       WHEN MATCHED THEN UPDATE SET Enabled = @Enabled, LastSyncUtc = @LastSyncUtc,
                            LastStatus = @LastStatus, LastError = @LastError
                       WHEN NOT MATCHED THEN INSERT (SourceSystem, Enabled, LastSyncUtc, LastStatus, LastError)
                            VALUES (@SourceSystem, @Enabled, @LastSyncUtc, @LastStatus, @LastError);",
                     connection);
-                command.Parameters.AddWithValue("@SourceSystem", source.SourceSystem.ToWireName());
-                command.Parameters.AddWithValue("@Enabled", source.Enabled);
-                command.Parameters.AddWithValue("@LastSyncUtc", (object?)source.LastSyncUtc ?? DBNull.Value);
-                command.Parameters.AddWithValue("@LastStatus", source.Status);
-                command.Parameters.AddWithValue("@LastError", (object?)Truncate(source.LastError, 2000) ?? DBNull.Value);
+                Add(command, "@SourceSystem", SqlDbType.NVarChar, 30, source.SourceSystem.ToWireName());
+                command.Parameters.Add("@Enabled", SqlDbType.Bit).Value = source.Enabled;
+                command.Parameters.Add("@LastSyncUtc", SqlDbType.DateTime2).Value = (object?)source.LastSyncUtc ?? DBNull.Value;
+                Add(command, "@LastStatus", SqlDbType.NVarChar, 20, Truncate(source.Status, 20));
+                Add(command, "@LastError", SqlDbType.NVarChar, 2000, Truncate(source.LastError, 2000));
                 await command.ExecuteNonQueryAsync(ct);
                 return true;
             }, false, cancellationToken);
 
         public Task<bool> UpsertFolderAsync(MappingCatalogFolderDto folder, CancellationToken cancellationToken)
-            => ExecuteAsync("UpsertFolder", async (connection, ct) =>
+        {
+            // ✅ Chave acima do limite do DDL é REJEITADA (truncar quebraria unicidade/idempotência).
+            if (folder.SourceProjectKey is { Length: > MaxProjectKey })
+            {
+                _logger.LogWarning("MappingCatalogStore.UpsertFolder rejeitado: SourceProjectKey excede {Max} caracteres (tamanho {Length}); FolderId {FolderId}.",
+                    MaxProjectKey, folder.SourceProjectKey.Length, folder.FolderId);
+                return Task.FromResult(false);
+            }
+            var folderName = Truncate(folder.Name, MaxName) ?? string.Empty;
+            return ExecuteAsync("UpsertFolder", async (connection, ct) =>
             {
                 using var command = new SqlCommand(
-                    @"MERGE dbo.tbMappingCatalogFolder AS t
+                    @"MERGE dbo.tbMappingCatalogFolder WITH (HOLDLOCK) AS t
                       USING (SELECT @FolderId AS FolderId) AS s ON t.FolderId = s.FolderId
                       WHEN MATCHED THEN UPDATE SET SourceProjectId = @SourceProjectId, Name = @Name,
                            NameSort = @NameSort, Retired = 0
                       WHEN NOT MATCHED THEN INSERT (FolderId, SourceSystem, SourceProjectKey, SourceProjectId, Name, NameSort, Retired)
                            VALUES (@FolderId, @SourceSystem, @SourceProjectKey, @SourceProjectId, @Name, @NameSort, @Retired);",
                     connection);
-                command.Parameters.AddWithValue("@FolderId", folder.FolderId);
-                command.Parameters.AddWithValue("@SourceSystem", folder.SourceSystem.ToWireName());
-                command.Parameters.AddWithValue("@SourceProjectKey", folder.SourceProjectKey);
-                command.Parameters.AddWithValue("@SourceProjectId", (object?)folder.SourceProjectId ?? DBNull.Value);
-                command.Parameters.AddWithValue("@Name", folder.Name);
-                command.Parameters.AddWithValue("@NameSort", NameSort(folder.Name));
-                command.Parameters.AddWithValue("@Retired", folder.Retired);
+                command.Parameters.Add("@FolderId", SqlDbType.UniqueIdentifier).Value = folder.FolderId;
+                Add(command, "@SourceSystem", SqlDbType.NVarChar, 30, folder.SourceSystem.ToWireName());
+                Add(command, "@SourceProjectKey", SqlDbType.NVarChar, MaxProjectKey, folder.SourceProjectKey);
+                command.Parameters.Add("@SourceProjectId", SqlDbType.BigInt).Value = (object?)folder.SourceProjectId ?? DBNull.Value;
+                Add(command, "@Name", SqlDbType.NVarChar, MaxName, folderName);
+                Add(command, "@NameSort", SqlDbType.NVarChar, MaxName, Truncate(NameSort(folderName), MaxName));
+                command.Parameters.Add("@Retired", SqlDbType.Bit).Value = folder.Retired;
                 await command.ExecuteNonQueryAsync(ct);
                 return true;
             }, false, cancellationToken);
+        }
 
-        public Task<bool> UpsertItemAsync(MappingCatalogItemDto item, CancellationToken cancellationToken)
-            => ExecuteAsync("UpsertItem", async (connection, ct) =>
+        public Task<bool> UpsertItemAsync(MappingCatalogItemDto original, CancellationToken cancellationToken)
+        {
+            var item = PrepareItem(original, out var rejection);
+            if (item is null)
+            {
+                _logger.LogWarning("MappingCatalogStore.UpsertItem rejeitado: {Reason}; CatalogId {CatalogId}.", rejection, original.CatalogId);
+                return Task.FromResult(false);
+            }
+            return ExecuteAsync("UpsertItem", async (connection, ct) =>
             {
                 // ✅ MERGE por CatalogId (chave imutável): o UPDATE nunca toca CatalogId/SourceSystem/
                 // SourceItemKey/FolderId. Item que reaparece volta a Retired=0.
                 using var command = new SqlCommand(
-                    @"MERGE dbo.tbMappingCatalogItem AS t
+                    @"MERGE dbo.tbMappingCatalogItem WITH (HOLDLOCK) AS t
                       USING (SELECT @CatalogId AS CatalogId) AS s ON t.CatalogId = s.CatalogId
                       WHEN MATCHED THEN UPDATE SET Engine = @Engine, Name = @Name, NameSort = @NameSort,
                            Version = @Version, DocType = @DocType, ContentHash = @ContentHash,
@@ -90,28 +109,29 @@ namespace LayoutParserApi.Services.Database
                            VALUES (@CatalogId, @FolderId, @SourceSystem, @SourceItemKey, @Engine, @Name, @NameSort, @Version, @DocType,
                             @ContentHash, @SourceRefJson, @PairedCatalogId, 0, SYSUTCDATETIME());",
                     connection);
-                command.Parameters.AddWithValue("@CatalogId", item.CatalogId);
-                command.Parameters.AddWithValue("@FolderId", item.FolderId);
-                command.Parameters.AddWithValue("@SourceSystem", item.SourceSystem.ToWireName());
-                command.Parameters.AddWithValue("@SourceItemKey", item.SourceItemKey);
-                command.Parameters.AddWithValue("@Engine", item.Engine);
-                command.Parameters.AddWithValue("@Name", item.Name);
-                command.Parameters.AddWithValue("@NameSort", NameSort(item.Name));
-                command.Parameters.AddWithValue("@Version", (object?)item.Version ?? DBNull.Value);
-                command.Parameters.AddWithValue("@DocType", (object?)item.DocType ?? DBNull.Value);
-                command.Parameters.AddWithValue("@ContentHash", (object?)item.ContentHash ?? DBNull.Value);
-                command.Parameters.AddWithValue("@SourceRefJson", (object?)item.SourceRefJson ?? DBNull.Value);
-                command.Parameters.AddWithValue("@PairedCatalogId", (object?)item.PairedCatalogId ?? DBNull.Value);
+                command.Parameters.Add("@CatalogId", SqlDbType.UniqueIdentifier).Value = item.CatalogId;
+                command.Parameters.Add("@FolderId", SqlDbType.UniqueIdentifier).Value = item.FolderId;
+                Add(command, "@SourceSystem", SqlDbType.NVarChar, 30, item.SourceSystem.ToWireName());
+                Add(command, "@SourceItemKey", SqlDbType.NVarChar, MaxItemKey, item.SourceItemKey);
+                Add(command, "@Engine", SqlDbType.NVarChar, 10, item.Engine);
+                Add(command, "@Name", SqlDbType.NVarChar, MaxName, item.Name);
+                Add(command, "@NameSort", SqlDbType.NVarChar, MaxName, Truncate(NameSort(item.Name), MaxName));
+                Add(command, "@Version", SqlDbType.NVarChar, MaxVersion, item.Version);
+                Add(command, "@DocType", SqlDbType.NVarChar, MaxDocType, item.DocType);
+                Add(command, "@ContentHash", SqlDbType.NVarChar, MaxContentHash, item.ContentHash);
+                Add(command, "@SourceRefJson", SqlDbType.NVarChar, -1, item.SourceRefJson);
+                command.Parameters.Add("@PairedCatalogId", SqlDbType.UniqueIdentifier).Value = (object?)item.PairedCatalogId ?? DBNull.Value;
                 await command.ExecuteNonQueryAsync(ct);
                 return true;
             }, false, cancellationToken);
+        }
 
         public Task<bool> RetireItemAsync(Guid catalogId, CancellationToken cancellationToken)
             => ExecuteAsync("RetireItem", async (connection, ct) =>
             {
                 using var command = new SqlCommand(
                     "UPDATE dbo.tbMappingCatalogItem SET Retired = 1 WHERE CatalogId = @CatalogId;", connection);
-                command.Parameters.AddWithValue("@CatalogId", catalogId);
+                command.Parameters.Add("@CatalogId", SqlDbType.UniqueIdentifier).Value = catalogId;
                 return await command.ExecuteNonQueryAsync(ct) > 0;
             }, false, cancellationToken);
 
@@ -121,8 +141,8 @@ namespace LayoutParserApi.Services.Database
                 using var command = new SqlCommand(
                     @"UPDATE dbo.tbMappingCatalogItem SET Retired = 1
                       WHERE SourceSystem = @SourceSystem AND Retired = 0 AND LastSeenUtc < @SeenBefore;", connection);
-                command.Parameters.AddWithValue("@SourceSystem", sourceSystem.ToWireName());
-                command.Parameters.AddWithValue("@SeenBefore", seenBeforeUtc);
+                Add(command, "@SourceSystem", SqlDbType.NVarChar, 30, sourceSystem.ToWireName());
+                command.Parameters.Add("@SeenBefore", SqlDbType.DateTime2).Value = seenBeforeUtc;
                 return await command.ExecuteNonQueryAsync(ct);
             }, 0, cancellationToken);
 
@@ -133,7 +153,7 @@ namespace LayoutParserApi.Services.Database
                     @"SELECT CatalogId, FolderId, SourceSystem, SourceItemKey, Engine, Name, Version, DocType,
                              ContentHash, SourceRefJson, PairedCatalogId, Retired
                       FROM dbo.tbMappingCatalogItem WHERE CatalogId = @CatalogId;", connection);
-                command.Parameters.AddWithValue("@CatalogId", catalogId);
+                command.Parameters.Add("@CatalogId", SqlDbType.UniqueIdentifier).Value = catalogId;
                 using var reader = await command.ExecuteReaderAsync(ct);
                 if (!await reader.ReadAsync(ct))
                     return null;
@@ -175,6 +195,34 @@ namespace LayoutParserApi.Services.Database
                 return fallback;
             }
         }
+
+        // Limites do DDL (SchemaDdl). Chaves (SourceItemKey/SourceProjectKey) NÃO são truncadas.
+        internal const int MaxItemKey = 400, MaxProjectKey = 200, MaxName = 300, MaxVersion = 50, MaxDocType = 100, MaxContentHash = 64;
+
+        /// <summary>
+        /// Valida/normaliza o item contra os tamanhos do DDL. Política: chave (<c>SourceItemKey</c>) acima do
+        /// limite é REJEITADA (retorna null + motivo) — truncar quebraria a unicidade e a idempotência do
+        /// upsert. Campos descritivos (Name, Version, DocType, ContentHash) são TRUNCADOS.
+        /// </summary>
+        public static MappingCatalogItemDto? PrepareItem(MappingCatalogItemDto item, out string? rejection)
+        {
+            rejection = null;
+            if (item.SourceItemKey is { Length: > MaxItemKey })
+            {
+                rejection = $"SourceItemKey excede {MaxItemKey} caracteres (tamanho {item.SourceItemKey.Length})";
+                return null;
+            }
+            return item with
+            {
+                Name = Truncate(item.Name, MaxName) ?? string.Empty,
+                Version = Truncate(item.Version, MaxVersion),
+                DocType = Truncate(item.DocType, MaxDocType),
+                ContentHash = Truncate(item.ContentHash, MaxContentHash),
+            };
+        }
+
+        private static void Add(SqlCommand command, string name, SqlDbType type, int size, string? value)
+            => command.Parameters.Add(name, type, size).Value = (object?)value ?? DBNull.Value;
 
         private static string? Truncate(string? value, int max)
             => value is { Length: > 0 } && value.Length > max ? value[..max] : value;

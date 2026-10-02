@@ -46,10 +46,16 @@ namespace LayoutParserApi.Tests.Catalog
         [Fact]
         public void Fonte_do_store_nunca_usa_DELETE()
         {
-            var path = Path.Combine(AppContext.BaseDirectory, "../../../../../Services/Database/SqlMappingCatalogStore.cs");
-            if (!File.Exists(path))
-                return; // layout de diretório diferente (ex.: CI) — outros testes cobrem o contrato.
-            Assert.DoesNotContain("DELETE FROM", File.ReadAllText(path), StringComparison.OrdinalIgnoreCase);
+            // Sobe a árvore até achar o arquivo-fonte; se não achar, FALHA (não passa em silêncio).
+            string? path = null;
+            for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null && path == null; dir = dir.Parent)
+            {
+                var candidate = Path.Combine(dir.FullName, "Services", "Database", "SqlMappingCatalogStore.cs");
+                if (File.Exists(candidate))
+                    path = candidate;
+            }
+            Assert.True(path != null, "SqlMappingCatalogStore.cs não encontrado a partir de AppContext.BaseDirectory.");
+            Assert.DoesNotContain("DELETE FROM", File.ReadAllText(path!), StringComparison.OrdinalIgnoreCase);
         }
 
         [Fact]
@@ -66,6 +72,48 @@ namespace LayoutParserApi.Tests.Catalog
             Assert.False(await store.RetireItemAsync(catalogId, CancellationToken.None));
             Assert.Equal(0, await store.RetireUnseenAsync(SourceSystem.Own, DateTime.UtcNow, CancellationToken.None));
             Assert.Null(await store.GetItemAsync(catalogId, CancellationToken.None));
+        }
+
+        private static MappingCatalogItemDto Item(string key, string name = "N", string? version = null, string? docType = null, string? hash = null)
+            => new(CatalogIdGenerator.ForItem(SourceSystem.Own, null, "k"), CatalogIdGenerator.ForFolder(SourceSystem.Own, null),
+                SourceSystem.Own, key, MappingCatalogEngine.Tcl, name, version, docType, hash, null, false);
+
+        [Fact]
+        public void Chave_de_item_acima_do_limite_e_rejeitada_nao_truncada()
+        {
+            Assert.NotNull(SqlMappingCatalogStore.PrepareItem(Item(new string('a', 400)), out var ok) );
+            Assert.Null(ok);
+            Assert.Null(SqlMappingCatalogStore.PrepareItem(Item(new string('a', 401)), out var motivo));
+            Assert.Contains("SourceItemKey", motivo);
+        }
+
+        [Fact]
+        public void Campos_descritivos_sao_truncados_e_chave_preservada()
+        {
+            var r = SqlMappingCatalogStore.PrepareItem(
+                Item("chave", new string('n', 400), new string('v', 80), new string('d', 150), new string('h', 100)), out _)!;
+            Assert.Equal(300, r.Name.Length);
+            Assert.Equal(50, r.Version!.Length);
+            Assert.Equal(100, r.DocType!.Length);
+            Assert.Equal(64, r.ContentHash!.Length);
+            Assert.Equal("chave", r.SourceItemKey);
+        }
+
+        [Fact]
+        public async Task Upsert_com_chave_longa_retorna_false_sem_tocar_o_banco()
+        {
+            Assert.False(await NewStore().UpsertItemAsync(Item(new string('a', 401)), CancellationToken.None));
+            var folder = new MappingCatalogFolderDto(CatalogIdGenerator.ForFolder(SourceSystem.Own, "p"), SourceSystem.Own, new string('p', 201), null, "P", false);
+            Assert.False(await NewStore().UpsertFolderAsync(folder, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task Cancelamento_propaga_em_GetItem_e_RetireUnseen()
+        {
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => NewStore().GetItemAsync(Guid.NewGuid(), cts.Token));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => NewStore().RetireUnseenAsync(SourceSystem.Own, DateTime.UtcNow, cts.Token));
         }
 
         [Fact]

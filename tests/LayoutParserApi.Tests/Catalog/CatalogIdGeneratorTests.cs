@@ -23,6 +23,9 @@ namespace LayoutParserApi.Tests.Catalog
             Assert.Equal(5, (id.ToByteArray()[7] >> 4)); // nibble de versão (byte 7 no layout .NET)
             Assert.Equal("neogrid|nfe|nfe/4.00/nfe_entrada", CatalogIdGenerator.BuildName(SourceSystem.Neogrid, "nfe", "nfe/4.00/NFe_Entrada"));
             Assert.Equal(id, CatalogIdGenerator.ForItem(SourceSystem.Neogrid, "NFE ", "nfe\\4.00\\NFe_Entrada"));
+            // Vetores conferidos com Python uuid5(CatalogNamespace, nome canônico).
+            Assert.Equal(Guid.Parse("3549f77d-8c91-5fde-a795-c067a250e4a5"), id);
+            Assert.Equal(Guid.Parse("01c0808e-36c8-5882-ae7f-2170c55734f1"), CatalogIdGenerator.ForItem(SourceSystem.Own, null, "M|1%"));
         }
 
         [Fact]
