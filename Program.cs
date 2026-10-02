@@ -591,6 +591,8 @@ try
     builder.Services.AddScoped<LayoutParserApi.Services.Interfaces.IMappingCatalogStore, LayoutParserApi.Services.Database.SqlMappingCatalogStore>();
     // ✅ Issue #629: adaptador Neogrid do catálogo (envolve ReferenceExampleCatalogService, sem reescrevê-lo).
     builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IMappingCatalogSource, LayoutParserApi.Services.Catalog.NeogridCatalogSource>();
+    // ✅ Issue #630: adaptador Own (tbGeneratedMapperArtifact, somente SELECT via IGeneratedMapperArtifactStore).
+    builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IMappingCatalogSource, LayoutParserApi.Services.Catalog.OwnArtifactCatalogSource>();
     // ✅ Issue #473 (fase 2 do trigger lazy #438, ADR §3/§6): config do job periódico + limite de
     // concorrência ÚNICO, compartilhado entre o trigger lazy e o job periódico (Singleton — um só
     // SemaphoreSlim no processo, nunca dois limites independentes).
