@@ -101,9 +101,28 @@ namespace LayoutParserApi.Models.Dtos.StudioModel
     public sealed record StudioDataType(string Name);
 
     /// <summary>
-    /// Diagnóstico não bloqueante (exceto <c>TARGET_HAS_LINK_AND_RULE</c>, severidade <c>error</c>).
-    /// Campos opcionais variam por <c>Code</c> (ver design §2.5).
+    /// Diagnóstico não bloqueante do studio-model (SOMENTE visualização; nada é removido/corrigido).
+    /// Campos opcionais variam por <c>Code</c> e são omitidos quando nulos.
+    /// Referências (#618): <c>REF_UNRESOLVED</c>, <c>REF_AMBIGUOUS</c>, <c>REF_T_CASE_MISMATCH</c>,
+    /// <c>REF_INDEX_UNSUPPORTED</c>, <c>REF_NAME_BREAKS_TOKEN</c>, <c>REF_T_NOT_CONSUMED</c>.
+    /// Integridade (#619): <c>LINK_ORPHAN_SOURCE</c>, <c>LINK_ORPHAN_TARGET</c>, <c>RULE_ORPHAN_TARGET</c>,
+    /// <c>TARGET_LINK_AND_RULE</c> (error), <c>N1_ORDER_SENSITIVE</c>.
     /// </summary>
+    /// <param name="Code">Código estável do diagnóstico.</param>
+    /// <param name="Severity"><c>warning</c> ou <c>error</c>.</param>
+    /// <param name="Message">Mensagem em PT-BR.</param>
+    /// <param name="Id">Elemento principal afetado (ligação, regra ou destino, conforme o código).</param>
+    /// <param name="Path">Caminho FullXPath citado na referência (sem o nome do layout).</param>
+    /// <param name="Ids">Ids relacionados (ex.: homônimos em <c>REF_AMBIGUOUS</c>, origem/destino órfão).</param>
+    /// <param name="Missing">Ids ausentes referenciados.</param>
+    /// <param name="LinkIds">Ligações envolvidas, na ordem de arquivo (Sequence, depois ordem de leitura).</param>
+    /// <param name="XsiType">Tipo xsi desconhecido, quando aplicável.</param>
+    /// <param name="Span">Intervalo <c>[início, fim]</c> da referência (<c>I.</c>/<c>T.</c>) dentro do <c>Code</c> da regra.</param>
+    /// <param name="Suggestion">Sugestão: caminho existente que difere em exatamente 1 segmento (<c>REF_UNRESOLVED</c>),
+    /// caminho com a caixa correta (<c>REF_T_CASE_MISMATCH</c>) ou função alternativa (<c>REF_INDEX_UNSUPPORTED</c>).</param>
+    /// <param name="RuleId">Regra que contém a referência/âncora.</param>
+    /// <param name="WinnerId">Em <c>N1_ORDER_SENSITIVE</c>: ligação vencedora. É APROXIMAÇÃO ESTÁTICA (1ª ligação por
+    /// Sequence cuja origem existe no modelo), sem dado de execução.</param>
     public sealed record StudioDiagnostic(
         string Code,
         string Severity,
@@ -113,5 +132,9 @@ namespace LayoutParserApi.Models.Dtos.StudioModel
         List<string>? Ids = null,
         List<string>? Missing = null,
         List<string>? LinkIds = null,
-        string? XsiType = null);
+        string? XsiType = null,
+        int[]? Span = null,
+        string? Suggestion = null,
+        string? RuleId = null,
+        string? WinnerId = null);
 }

@@ -110,7 +110,7 @@ namespace LayoutParserApi.Tests.StudioModel
             Assert.Contains(doc.Diagnostics, d => d.Code == "LAYOUT_UNAVAILABLE" && d.Id == TargetLayoutGuid);
             // links permanecem e viram órfãos (não descartados)
             Assert.Equal(3, doc.Links.Count);
-            Assert.Contains(doc.Diagnostics, d => d.Code == "ORPHAN_LINK");
+            Assert.Contains(doc.Diagnostics, d => d.Code.StartsWith("LINK_ORPHAN_"));
             Assert.Null(doc.Links["LKM_00000000-0000-0000-0000-000000003001"].Display.UnderTargetId);
         }
 
@@ -166,9 +166,9 @@ namespace LayoutParserApi.Tests.StudioModel
             x.Root.Element("Rules")!.Add(both);
 
             var doc = (await Load(Build(mapperXml: x.ToString()).Adapter))!;
-            Assert.Contains(doc.Diagnostics, d => d.Code == "ORPHAN_LINK" && d.Id == "LKM_ORF");
-            Assert.Contains(doc.Diagnostics, d => d.Code == "TARGET_HAS_MULTIPLE_LINKS");
-            Assert.Contains(doc.Diagnostics, d => d.Code == "TARGET_HAS_LINK_AND_RULE" && d.Severity == "error");
+            Assert.Contains(doc.Diagnostics, d => d.Code.StartsWith("LINK_ORPHAN_") && d.Id == "LKM_ORF");
+            Assert.Contains(doc.Diagnostics, d => d.Code == "N1_ORDER_SENSITIVE");
+            Assert.Contains(doc.Diagnostics, d => d.Code == "TARGET_LINK_AND_RULE" && d.Severity == "error");
         }
 
         // ---------- contrato (design §7-9) ----------

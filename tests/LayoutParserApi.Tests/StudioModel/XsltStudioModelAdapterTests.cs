@@ -81,7 +81,7 @@ namespace LayoutParserApi.Tests.StudioModel
             Assert.Equal(new[] { "xslt:in:ORDEM" }, doc.Trees.Input.RootIds);
             Assert.Equal("line", doc.Nodes["xslt:in:ORDEM/ITENS"].Type);
             Assert.Equal("field", doc.Nodes["xslt:in:ORDEM/CAB/NumeroPedido"].Type);
-            Assert.DoesNotContain(doc.Diagnostics, d => d.Severity == "error" || d.Code.StartsWith("XSLT_UNRESOLVED") || d.Code == "ORPHAN_LINK");
+            Assert.DoesNotContain(doc.Diagnostics, d => d.Severity == "error" || d.Code.StartsWith("XSLT_UNRESOLVED") || d.Code.StartsWith("LINK_ORPHAN_"));
         }
 
         [Fact]
@@ -136,7 +136,7 @@ namespace LayoutParserApi.Tests.StudioModel
             var global = doc.Rules["xslt:rule:@global#1"];
             Assert.Equal("variable:g", global.Opaque[0].Reason);
             Assert.Null(global.AnchorId);
-            Assert.Contains(doc.Diagnostics, d => d.Code == "ORPHAN_LINK" && d.Id == "xslt:rule:@global#1"); // órfão reportado, não descartado
+            Assert.Contains(doc.Diagnostics, d => d.Code == "RULE_ORPHAN_TARGET" && d.Id == "xslt:rule:@global#1"); // órfão reportado, não descartado
         }
 
         [Fact]
@@ -146,7 +146,7 @@ namespace LayoutParserApi.Tests.StudioModel
             Assert.Single(doc.Links);
             Assert.Equal("xslt:in:A", doc.Links["xslt:link:pedido/numero"].SourceId);
             Assert.Contains(doc.Diagnostics, d => d.Code == "XSLT_TARGET_ALREADY_BOUND");
-            Assert.DoesNotContain(doc.Diagnostics, d => d.Code == "TARGET_HAS_LINK_AND_RULE");
+            Assert.DoesNotContain(doc.Diagnostics, d => d.Code == "TARGET_LINK_AND_RULE");
         }
 
         [Fact]
@@ -156,7 +156,7 @@ namespace LayoutParserApi.Tests.StudioModel
             var l = Assert.Single(doc.Links).Value;
             Assert.Null(l.TargetId);
             Assert.Contains(doc.Diagnostics, d => d.Code == "XSLT_UNRESOLVED_TARGET" && d.Path == "pedido/naoexiste");
-            Assert.Contains(doc.Diagnostics, d => d.Code == "ORPHAN_LINK");
+            Assert.Contains(doc.Diagnostics, d => d.Code.StartsWith("LINK_ORPHAN_"));
         }
 
         [Theory]

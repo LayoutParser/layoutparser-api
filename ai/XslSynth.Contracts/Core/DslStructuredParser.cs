@@ -220,22 +220,33 @@ public sealed class DslStructuredParser
     // ── Tokenizer ────────────────────────────────────────────────────────────
 
     private static readonly Regex TokenRx = new(
-        @"(?<ref>[#\$IT]\.[A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)*)" +
-        @"|(?<str>'[^']*')" +
+        @"\G(?:(?<str>'[^']*')" +
         @"|(?<num>\d+(\.\d+)?)" +
         @"|(?<op>!=|==|&&|=|>|<)" +
         @"|(?<punct>[(),;])" +
-        @"|(?<ident>[A-Za-z_][A-Za-z0-9_]*)",
+        @"|(?<ident>[A-Za-z_][A-Za-z0-9_]*))",
         RegexOptions.Compiled);
 
     private static List<DslToken> Tokenize(string code)
     {
         var tokens = new List<DslToken>();
-        foreach (Match m in TokenRx.Matches(code))
+        // Refs (I./T./#./$.) e comentários vêm do tokenizador compartilhado (fiel ao motor);
+        // o restante segue por regex ancorada (\G) a partir da posição corrente.
+        var pos = 0;
+        while (pos < code.Length)
         {
-            if (m.Groups["ref"].Success)
-                tokens.Add(new DslToken(DslTokenKind.Ref, m.Groups["ref"].Value));
-            else if (m.Groups["str"].Success)
+            var skip = SysmiddleDslTokenizer.SkipLiteralOrComment(code, pos);
+            if (skip >= 0 && code[pos] != '\'') { pos = skip; continue; }
+            if (SysmiddleDslTokenizer.TryReadRef(code, pos, out var rf))
+            {
+                tokens.Add(new DslToken(DslTokenKind.Ref, rf.Prefix + "." + rf.Path));
+                pos = rf.End;
+                continue;
+            }
+            var m = TokenRx.Match(code, pos);
+            if (!m.Success) { pos++; continue; }
+            pos = m.Index + Math.Max(1, m.Length);
+            if (m.Groups["str"].Success)
             {
                 var raw = m.Groups["str"].Value;
                 tokens.Add(new DslToken(DslTokenKind.String, raw[1..^1]));

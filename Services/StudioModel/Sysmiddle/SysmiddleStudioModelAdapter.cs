@@ -127,6 +127,9 @@ namespace LayoutParserApi.Services.StudioModel.Sysmiddle
             }
 
             diagnostics.AddRange(DiagnosticsBuilder.Build(nodes, links, rules));
+            // Diagnósticos de referência (I./T.) e integridade (#618/#619): só leitura, nunca lançam.
+            diagnostics.AddRange(ReferenceDiagnosticsBuilder.Build(nodes, rules));
+            diagnostics.AddRange(IntegrityDiagnosticsBuilder.Build(nodes, links, rules));
 
             // --- catálogo de tipos resolvidos (vazio se indisponível) ---
             var datatypes = new Dictionary<string, StudioDataType>(StringComparer.Ordinal);

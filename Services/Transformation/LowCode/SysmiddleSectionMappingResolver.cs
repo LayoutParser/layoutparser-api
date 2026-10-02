@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 using LayoutParserApi.Models.Transformation;
@@ -37,9 +36,6 @@ namespace LayoutParserApi.Services.Transformation.LowCode
     /// </summary>
     public static class SysmiddleSectionMappingResolver
     {
-        // I.<LinhaOrigem>/... ou I.<LinhaOrigem> — primeiro segmento após "I." na DSL Sysmiddle.
-        private static readonly Regex SourceLineRegex =
-            new(@"I\.([A-Za-z0-9_]+)", RegexOptions.Compiled);
 
         /// <summary>
         /// Resolve os <see cref="SectionMapping"/> de um candidato sysmiddle já executado.
@@ -101,11 +97,14 @@ namespace LayoutParserApi.Services.Transformation.LowCode
                 if (string.IsNullOrWhiteSpace(targetPathFromDsl))
                     continue;
 
-                var sourceMatch = SourceLineRegex.Match(rule.ContentValue);
-                if (!sourceMatch.Success)
+                // I.<LinhaOrigem>/... — tokenização fiel ao motor; nome da linha = 1º segmento do caminho.
+                var firstInput = SysmiddleDslTokenizer.InputPaths(rule.ContentValue).FirstOrDefault();
+                if (string.IsNullOrEmpty(firstInput))
                     continue;
 
-                var lineName = sourceMatch.Groups[1].Value;
+                var lineName = firstInput.Split('/', 2)[0].Trim();
+                if (lineName.Length == 0)
+                    continue;
 
                 var xpath = BuildXPath(targetPathFromDsl, xmlNamespaces is not null ? "nfe" : null);
                 var xmlOccurrence = CountXPathOccurrences(outputDoc, targetPathFromDsl, xmlNamespaces);
