@@ -1,11 +1,16 @@
 name: Deploy API Linux (producao)
 
-# Fase 3 da migracao Linux (issue #578, Epic #575). Pipeline PARALELO ao deploy.yml (Windows).
-# Somente workflow_dispatch e com aprovacao: o deploy.yml Windows continua sendo o de producao
-# ate o cutover (ver docs/architecture/migracao-linux-fase3-pipeline.md). Rollback = nao usar
-# este arquivo e manter o servico Windows.
+# Producao Linux (issue #578, Epic #575). Dispara no push/merge em master e exige APROVACAO DE UM CLIQUE
+# (environment "production" com Required reviewers = dono). Sem aprovacao o job fica pendente e nada e publicado.
+# workflow_dispatch fica como reserva manual (exige digitar DEPLOY-LINUX). O antigo deploy.yml Windows foi removido.
+# Merges que so tocam docs/** ou *.md nao disparam deploy. Rollback automatico no smoke test (ver abaixo).
 
 on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   workflow_dispatch:
     inputs:
       confirmar:
@@ -21,7 +26,8 @@ concurrency:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirmar == 'DEPLOY-LINUX' }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.confirmar == 'DEPLOY-LINUX') }}
+    environment: production
     runs-on: [self-hosted, linux, production]
     timeout-minutes: 30
     env:
