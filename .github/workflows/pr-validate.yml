@@ -1,6 +1,6 @@
 name: PR Validate (LayoutParserApi)
 
-# Gate de build/teste para PRs contra develop, de QUALQUER branch de origem.
+# Gate de build/teste para PRs contra develop e master (fluxo real: develop -> master), de QUALQUER branch de origem.
 #
 # Por que este workflow existe separado do ci-dev.yml: ci-dev.yml, alem de compilar/testar,
 # TAMBEM FAZ DEPLOY (historico). Rodar deploy em todo
@@ -16,6 +16,7 @@ on:
   pull_request:
     branches:
       - develop
+      - master
 
 # Minimo necessario: checkout deste repo + LayoutParserDecrypt (via
 # GH_PAT_TOKEN, fora do escopo do GITHUB_TOKEN) - nenhum step comenta PR, cria release ou
@@ -44,6 +45,11 @@ concurrency:
 
 jobs:
   build-and-test:
+    # Nome do job = contexto do check ('build'), compativel com o check das PRs antigas.
+    name: build
+    # Runner self-hosted: nunca executar codigo de fork (PR de fork nao recebe secrets e o codigo
+    # nao e confiavel). Dependabot abre branch no proprio repo: roda com token read-only, sem secrets.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, dev-local]
     timeout-minutes: 30
 
@@ -107,7 +113,7 @@ jobs:
       run: |
         dotnet test LayoutParserApi/tests/LayoutParserApi.Tests/LayoutParserApi.Tests.csproj --configuration Release --logger "console;verbosity=minimal"
 
-    - name: Checkout base (develop) para comparar OpenAPI
+    - name: Checkout base da PR (develop ou master) para comparar OpenAPI
       continue-on-error: ${{ env.OPENAPI_CONTRACT_BLOCKING != 'true' }}
       uses: actions/checkout@v7
       with:
