@@ -31,9 +31,20 @@ public class LowCodeRunnerHttpClientTests
         }
     }
 
-    private sealed class Factory(HttpMessageHandler h) : IHttpClientFactory
+    private sealed class Factory(HttpMessageHandler h, bool semBase = false) : IHttpClientFactory
     {
-        public HttpClient CreateClient(string name) => new(h, disposeHandler: false) { BaseAddress = new Uri("http://runner.test:5230") };
+        public HttpClient CreateClient(string name) => semBase
+            ? new(h, disposeHandler: false)
+            : new(h, disposeHandler: false) { BaseAddress = new Uri("http://runner.test:5230") };
+    }
+
+    private sealed class DelayedCancelHandler(int ms, Exception ex) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            await Task.Delay(ms, CancellationToken.None);
+            throw ex;
+        }
     }
 
     private sealed class ThrowingHandler(Exception ex) : HttpMessageHandler
@@ -128,10 +139,74 @@ public class LowCodeRunnerHttpClientTests
     [Fact]
     public async Task TimeoutDoHttpClient_SemCancelamentoDoChamador_ViraTimeout()
     {
-        var c = Novo(new ThrowingHandler(new TaskCanceledException("t", new TimeoutException())));
+        // cancelamento so apos o tempo total (1s) => execucao longa demais
+        var c = Novo(new DelayedCancelHandler(1100, new TaskCanceledException("t", new TimeoutException())),
+            opt: new LowCodeRunnerOptions { BaseUrl = "http://runner.test:5230", HttpTimeoutSeconds = 1 });
         var ex = await Assert.ThrowsAsync<LowCodeRunnerException>(() => Chamar(c));
         Assert.Equal("timeout", ex.Code);
     }
+
+    [Fact]
+    public async Task TimeoutDeConexao_CancelamentoRapido_ViraRunnerUnavailable()
+    {
+        var c = Novo(new ThrowingHandler(new TaskCanceledException("connect", new TimeoutException())));
+        var ex = await Assert.ThrowsAsync<LowCodeRunnerException>(() => Chamar(c));
+        Assert.Equal("runner_unavailable", ex.Code);
+    }
+
+    [Fact]
+    public async Task TimeoutDeConexao_CausaSocket_ViraRunnerUnavailable_MesmoAposOTempoTotal()
+    {
+        var c = Novo(new DelayedCancelHandler(1100, new TaskCanceledException("c", new System.Net.Sockets.SocketException())),
+            opt: new LowCodeRunnerOptions { BaseUrl = "http://runner.test:5230", HttpTimeoutSeconds = 1 });
+        var ex = await Assert.ThrowsAsync<LowCodeRunnerException>(() => Chamar(c));
+        Assert.Equal("runner_unavailable", ex.Code);
+    }
+
+    [Fact]
+    public async Task Redirect307_NaoESeguido_ViraRuntimeError_SemVazarLocation()
+    {
+        var r = new HttpResponseMessage(HttpStatusCode.TemporaryRedirect);
+        r.Headers.Location = new Uri("http://evil.test/segredo");
+        var h = new FakeHandler().Enqueue(r).Enqueue(Json(HttpStatusCode.OK, Ok));
+        var ex = await Assert.ThrowsAsync<LowCodeRunnerException>(() => Chamar(Novo(h)));
+        Assert.Equal("runtime_error", ex.Code);
+        Assert.DoesNotContain("evil", ex.Message);
+        Assert.Single(h.Requests); // POST com o documento nao reenviado
+    }
+
+    [Fact]
+    public async Task BaseUrlSemEsquema_NoSendAsync_ViraRunnerUnavailableSanitizada()
+    {
+        var c = new LowCodeRunnerHttpClient(new Factory(new FakeHandler(), semBase: true),
+            Options.Create(new LowCodeRunnerOptions { BaseUrl = "lowcoderunner.local:5230" }),
+            NullLogger<LowCodeRunnerHttpClient>.Instance);
+        var ex = await Assert.ThrowsAsync<LowCodeRunnerException>(() => Chamar(c));
+        Assert.Equal("runner_unavailable", ex.Code);
+        Assert.DoesNotContain("lowcoderunner", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("lowcoderunner.local:5230", false)]
+    [InlineData("nao e url", false)]
+    [InlineData("ftp://x:1", false)]
+    [InlineData("", false)]
+    [InlineData("http://runner.local:5230", true)]
+    [InlineData("https://runner.local", true)]
+    public void BaseUrl_Validacao_ExigeHttpOuHttps_EInvalidaNaoConta(string url, bool valida)
+    {
+        Assert.Equal(valida, LowCodeRunnerHttpClient.IsValidBaseUrl(url));
+        Assert.Equal(valida, LowCodeRunnerHttpClient.IsConfigured(new LowCodeRunnerOptions { BaseUrl = url }));
+    }
+
+    [Theory]
+    [InlineData("queue_full", "queue_full")]
+    [InlineData("timeout", "timeout")]
+    [InlineData("mapper_not_found", "mapper_not_found")]
+    [InlineData(null, "runner_unavailable")]
+    [InlineData("", "runner_unavailable")]
+    public void PathwayDiagnostic_ErrorCode_ParaCode(string? errorCode, string esperado) =>
+        Assert.Equal(esperado, LayoutParserApi.Models.Transformation.PathwayDiagnostic.ResolveRunnerFailureCode(errorCode));
 
     [Fact]
     public async Task CancelamentoDoChamador_PropagaOperationCanceled()

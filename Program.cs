@@ -878,13 +878,26 @@ try
     // ConnectTimeout curto: conexão recusada/DNS lento vira runner_unavailable rápido em vez de segurar 200s.
     var lowCodeHttpSection = builder.Configuration.GetSection("LowCode");
     var lowCodeBaseUrl = lowCodeHttpSection["BaseUrl"];
+    // BaseUrl invalida (sem esquema http/https, nao parseavel) NAO derruba a API: trata como nao
+    // configurada (cai no caminho legado/runner_unavailable) com Warning claro.
+    if (!string.IsNullOrWhiteSpace(lowCodeBaseUrl) && !LowCodeRunnerHttpClient.IsValidBaseUrl(lowCodeBaseUrl))
+    {
+        Log.Warning("LowCode:BaseUrl invalida (exige URL absoluta http/https, ex.: http://host:5230); runner HTTP desativado e tratado como nao configurado");
+        lowCodeBaseUrl = null;
+    }
     var lowCodeHttpTimeout = int.TryParse(lowCodeHttpSection["HttpTimeoutSeconds"], out var lcTo) && lcTo > 0 ? lcTo : 200;
     builder.Services.AddHttpClient(LowCodeRunnerHttpClient.HttpClientName, client =>
     {
         if (Uri.TryCreate(lowCodeBaseUrl, UriKind.Absolute, out var lcUri))
             client.BaseAddress = lcUri;
         client.Timeout = TimeSpan.FromSeconds(lowCodeHttpTimeout);
-    }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(5) });
+    }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+        // Runner interno: nunca seguir redirect (reenviaria o documento fiscal) nem usar proxy.
+        AllowAutoRedirect = false,
+        UseProxy = false
+    });
     builder.Services.AddSingleton<LowCodeRunnerHttpClient>();
     builder.Services.AddSingleton<LowCodeTransformationService>();
     // ✅ Store/índice das transformações low-code: Singleton porque é consumido pelos Singletons do

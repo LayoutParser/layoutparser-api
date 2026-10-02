@@ -103,6 +103,7 @@ namespace LayoutParserApi.Services.Transformation.LowCode
         // segundos depois) sem congelar para sempre um resultado de um mapper que pode ter mudado.
         // Mesmo aviso do campo acima: override só por LowCode__TransformationCacheTtlHours.
         public int TransformationCacheTtlHours { get; set; } = 2;
+
     }
 }
 

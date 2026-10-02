@@ -42,12 +42,18 @@ namespace LayoutParserApi.Services.Transformation.LowCode
             _delay = delay ?? ((t, ct) => Task.Delay(t, ct));
         }
 
-        public static bool IsConfigured(LowCodeRunnerOptions o) => !string.IsNullOrWhiteSpace(o.BaseUrl);
+        /// <summary>BaseUrl preenchida E válida (absoluta, http/https). Inválida = tratada como não configurada.</summary>
+        public static bool IsConfigured(LowCodeRunnerOptions o) => IsValidBaseUrl(o.BaseUrl);
+
+        public static bool IsValidBaseUrl(string? baseUrl) =>
+            Uri.TryCreate(baseUrl, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps);
 
         /// <summary>
         /// POST /v1/transform. Em 503 com Retry-After (fila cheia) tenta de novo até
         /// <see cref="MaxQueueFullRetries"/> vezes, SOMENTE se a espera couber no orçamento total da
         /// chamada (<see cref="LowCodeCandidatesBudget"/>); senão falha com queue_full.
+        /// Atenção: o orçamento conta apenas as ESPERAS (Retry-After) acumuladas; cada tentativa em si
+        /// pode ir até HttpTimeout (200s), então o pior caso total é maior que o orçamento.
         /// </summary>
         public virtual async Task<LowCodeRunnerTransformResponse> TransformAsync(
             string document, string fileName, string? mapperId, string? mapperName,
@@ -151,6 +157,7 @@ namespace LayoutParserApi.Services.Transformation.LowCode
         private async Task<JsonDocument> SendAsync(HttpMethod method, string path, byte[] body, string correlationId,
             CancellationToken ct)
         {
+            var sw = Stopwatch.StartNew();
             try
             {
                 using var http = _factory.CreateClient(HttpClientName);
@@ -164,6 +171,11 @@ namespace LayoutParserApi.Services.Transformation.LowCode
                 using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseContentRead, ct);
                 var text = await resp.Content.ReadAsStringAsync(ct);
 
+                // Redirect nunca é seguido (runner interno): 3xx e erro, sem expor Location.
+                if ((int)resp.StatusCode is >= 300 and < 400)
+                    throw new LowCodeRunnerException(LowCodeRunnerException.RuntimeError,
+                        "Runner low-code respondeu redirecionamento inesperado", (int)resp.StatusCode);
+
                 if (resp.IsSuccessStatusCode)
                 {
                     try { return JsonDocument.Parse(text); }
@@ -176,6 +188,12 @@ namespace LayoutParserApi.Services.Transformation.LowCode
             }
             catch (LowCodeRunnerException) { throw; }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException ex) when (EhTimeoutDeConexao(ex, sw.Elapsed))
+            {
+                // Timeout de CONEXAO (SocketsHttpHandler.ConnectTimeout) chega como cancelamento, mas o
+                // runner nunca aceitou a conexao: e indisponibilidade, nao execucao lenta.
+                throw new LowCodeRunnerException(LowCodeRunnerException.RunnerUnavailable, "runner indisponível neste host", inner: ex);
+            }
             catch (OperationCanceledException ex)
             {
                 // Sem cancelamento do chamador => estourou HttpClient.Timeout (execucao longa demais).
@@ -186,6 +204,23 @@ namespace LayoutParserApi.Services.Transformation.LowCode
                 // Conexao recusada, DNS, timeout de conexao.
                 throw new LowCodeRunnerException(LowCodeRunnerException.RunnerUnavailable, "runner indisponível neste host", inner: ex);
             }
+            catch (Exception ex) when (ex is InvalidOperationException or UriFormatException)
+            {
+                // BaseUrl ausente/invalida (sem BaseAddress, URI relativa): mensagem fixa, sem vazar a URL.
+                _logger.LogWarning("LowCode:BaseUrl invalida ou ausente; runner HTTP indisponivel (corr={CorrelationId})", correlationId);
+                throw new LowCodeRunnerException(LowCodeRunnerException.RunnerUnavailable, "runner indisponível neste host", inner: ex);
+            }
+        }
+
+        /// <summary>
+        /// Distingue timeout de conexao de timeout de execucao: causa socket/HTTP explicita, ou o
+        /// cancelamento ocorreu ANTES de HttpClient.Timeout (que so dispara apos o tempo total).
+        /// </summary>
+        private bool EhTimeoutDeConexao(OperationCanceledException ex, TimeSpan elapsed)
+        {
+            if (ex.InnerException is System.Net.Sockets.SocketException or HttpRequestException) return true;
+            var total = TimeSpan.FromSeconds(_opt.HttpTimeoutSeconds > 0 ? _opt.HttpTimeoutSeconds : 200);
+            return elapsed < total * 0.9;
         }
 
         private static LowCodeRunnerException MapError(HttpResponseMessage resp, string text, string correlationId)

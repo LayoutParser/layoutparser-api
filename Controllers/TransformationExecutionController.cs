@@ -895,14 +895,14 @@ namespace LayoutParserApi.Controllers
                     // falharam na execução — infra/runner, não gap de cobertura (§4.3 "runner_unavailable").
                     _logger.LogWarning(
                         "PathwayDiagnostic {CorrelationId}: pathway={Pathway} status={Status} code={Code} layout={LayoutName} layoutGuid={LayoutGuid} fonte=execução do runner (mapper existe, execução falhou)",
-                        Services.Logging.CorrelationContext.CurrentId, "sysmiddle", "failed", lastCandidateFailureCode ?? "runner_unavailable", safeLayoutName, safeResolvedLayoutGuid);
+                        Services.Logging.CorrelationContext.CurrentId, "sysmiddle", "failed", Models.Transformation.PathwayDiagnostic.ResolveRunnerFailureCode(lastCandidateFailureCode), safeLayoutName, safeResolvedLayoutGuid);
                     pathwayDiagnostics.Add(new Models.Transformation.PathwayDiagnostic
                     {
                         Pathway = "sysmiddle",
                         Status = "failed",
                         // Issue #641: código estável do runner HTTP (queue_full, mapper_not_found, ...);
                         // sem código (falha fora do cliente HTTP) mantém o histórico runner_unavailable.
-                        Code = lastCandidateFailureCode ?? "runner_unavailable",
+                        Code = Models.Transformation.PathwayDiagnostic.ResolveRunnerFailureCode(lastCandidateFailureCode),
                         Message = lastCandidateFailureMessage ?? "Todos os candidatos sysmiddle falharam na execução"
                     });
                 }

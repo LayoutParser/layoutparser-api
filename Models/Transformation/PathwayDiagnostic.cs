@@ -19,6 +19,11 @@ namespace LayoutParserApi.Models.Transformation
         /// String, não enum exposto — permite adicionar valores sem quebrar o contrato.</summary>
         public string Status { get; set; } = "";
 
+        /// <summary>Código do diagnóstico sysmiddle a partir do ErrorCode do runner HTTP (#641);
+        /// sem código (falha fora do cliente HTTP) mantém o histórico runner_unavailable.</summary>
+        public static string ResolveRunnerFailureCode(string? errorCode) =>
+            string.IsNullOrWhiteSpace(errorCode) ? "runner_unavailable" : errorCode;
+
         /// <summary>Taxonomia estável: "no_mapper" | "map_not_found" | "xsl_not_found" |
         /// "configuration_error" | "runner_unavailable" | "execution_error" | "not_applicable";
         /// no pathway sysmiddle via runner HTTP (#641) também: "queue_full" | "mapper_not_found" |
