@@ -59,6 +59,23 @@ namespace LayoutParserApi.Tests.Catalog
         }
 
         [Fact]
+        public void Busca_por_nome_usa_ESCAPE_com_barra_invertida_nao_vazio()
+        {
+            // Regressão: ESCAPE '' (vazio) é inválido no SQL Server (Msg 506) e derrubava toda busca ?q= com 503.
+            string? path = null;
+            for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null && path == null; dir = dir.Parent)
+            {
+                var candidate = Path.Combine(dir.FullName, "Services", "Database", "SqlMappingCatalogStore.cs");
+                if (File.Exists(candidate))
+                    path = candidate;
+            }
+            Assert.True(path != null, "SqlMappingCatalogStore.cs não encontrado a partir de AppContext.BaseDirectory.");
+            var fonte = File.ReadAllText(path!);
+            Assert.DoesNotContain("ESCAPE ''", fonte);
+            Assert.Contains("ESCAPE '\\'", fonte);
+        }
+
+        [Fact]
         public async Task Banco_indisponivel_degrada_sem_lancar()
         {
             var store = NewStore();

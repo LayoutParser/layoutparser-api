@@ -261,7 +261,7 @@ namespace LayoutParserApi.Services.Database
             {
                 // WHERE só com fragmentos CONSTANTES; valores sempre por SqlParameter.
                 const string where = @"FolderId = @F AND (@IncludeRetired = 1 OR Retired = 0)
-                                       AND (@Engine IS NULL OR Engine = @Engine) AND (@Q IS NULL OR NameSort LIKE @Q ESCAPE '')";
+                                       AND (@Engine IS NULL OR Engine = @Engine) AND (@Q IS NULL OR NameSort LIKE @Q ESCAPE '\')";
                 void Bind(SqlCommand c)
                 {
                     c.Parameters.Add("@F", SqlDbType.UniqueIdentifier).Value = folderId;
