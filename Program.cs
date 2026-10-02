@@ -589,6 +589,22 @@ try
     builder.Services.AddScoped<LayoutParserApi.Services.Interfaces.IGeneratedMapperArtifactStore, LayoutParserApi.Services.Database.SqlGeneratedMapperArtifactStore>();
     // ✅ Issue #628: índice de metadados do catálogo unificado de mapeadores (IdentityDatabase:*, sem corpo TCL/XSL).
     builder.Services.AddScoped<LayoutParserApi.Services.Interfaces.IMappingCatalogStore, LayoutParserApi.Services.Database.SqlMappingCatalogStore>();
+    // ✅ Issue #629: adaptador Neogrid do catálogo (envolve ReferenceExampleCatalogService, sem reescrevê-lo).
+    builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IMappingCatalogSource, LayoutParserApi.Services.Catalog.NeogridCatalogSource>();
+    // ✅ Issue #630: adaptador Own (tbGeneratedMapperArtifact, somente SELECT via IGeneratedMapperArtifactStore).
+    builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IMappingCatalogSource, LayoutParserApi.Services.Catalog.OwnArtifactCatalogSource>();
+    // ✅ Issue #633: adaptador ConnectUs (SOMENTE LEITURA, só SELECT em Database:*); desligado por default no sync.
+    builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IConnectUsMapperReader, LayoutParserApi.Services.Catalog.SqlConnectUsMapperReader>();
+    builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IMappingCatalogSource, LayoutParserApi.Services.Catalog.ConnectUsCatalogSource>();
+    // ✅ Issue #631: consultas do catálogo unificado (árvore lida do índice local) + flags de sync por adaptador.
+    builder.Services.Configure<LayoutParserApi.Services.Catalog.MappingCatalogOptions>(builder.Configuration.GetSection("MappingCatalog"));
+    builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IMappingCatalogService, LayoutParserApi.Services.Catalog.MappingCatalogService>();
+    // ✅ Issue #632: sync do índice (lock por origem, MERGE, retire só após sync completo). Flags por adaptador
+    // em MappingCatalog:Sources:{Origem}:Enabled (default DESLIGADO). O BackgroundService é também o gatilho manual (mesma instância).
+    builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IMappingCatalogSyncService, LayoutParserApi.Services.Catalog.MappingCatalogSyncService>();
+    builder.Services.AddSingleton<LayoutParserApi.Services.Catalog.MappingCatalogSyncBackgroundService>();
+    builder.Services.AddSingleton<LayoutParserApi.Services.Catalog.IMappingCatalogSyncTrigger>(sp => sp.GetRequiredService<LayoutParserApi.Services.Catalog.MappingCatalogSyncBackgroundService>());
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<LayoutParserApi.Services.Catalog.MappingCatalogSyncBackgroundService>());
     // ✅ Issue #473 (fase 2 do trigger lazy #438, ADR §3/§6): config do job periódico + limite de
     // concorrência ÚNICO, compartilhado entre o trigger lazy e o job periódico (Singleton — um só
     // SemaphoreSlim no processo, nunca dois limites independentes).
@@ -596,6 +612,8 @@ try
         builder.Configuration.GetSection("GeneratedMapperSweep"));
     builder.Services.AddSingleton<LayoutParserApi.Services.Transformation.Ai.GeneratedMapperGenerationLimiter>();
     builder.Services.AddScoped<LayoutParserApi.Services.Transformation.Ai.IGeneratedMapperArtifactService, LayoutParserApi.Services.Transformation.Ai.GeneratedMapperArtifactService>();
+    // Issue #642: criação automática do mapeador ausente quando o pathway tcl-xsl cai em map_not_found/xsl_not_found.
+    builder.Services.AddSingleton<LayoutParserApi.Services.Transformation.Ai.IMissingMapperGenerationTrigger, LayoutParserApi.Services.Transformation.Ai.MissingMapperGenerationTrigger>();
     builder.Services.AddScoped<LayoutParserApi.Services.Transformation.Ai.IGeneratedMapperListService, LayoutParserApi.Services.Transformation.Ai.GeneratedMapperListService>();
     // Job periódico (issue #473): varre tbMapper e dispara geração para quem não tem candidato ou está
     // stale, reaproveitando GetOrTriggerAsync acima — não bloqueia o startup (delay inicial de 2min).
@@ -668,6 +686,7 @@ try
     // Reconstrução reversa best-effort XML->TXT (issue #151, Fase 4) — sem estado, mesmo grupo.
     builder.Services.AddScoped<LayoutParserApi.Services.XmlAnalysis.ReverseReconstructionService>();
     builder.Services.AddScoped<MqSeriesToXmlTransformer>();
+    builder.Services.AddSingleton<IGeneratedXslResolver, GeneratedXslResolver>();
     builder.Services.AddScoped<TransformationPipelineService>();
     builder.Services.AddScoped<TclGeneratorService>();
     builder.Services.AddScoped<XslGeneratorService>();

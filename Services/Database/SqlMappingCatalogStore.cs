@@ -147,31 +147,214 @@ namespace LayoutParserApi.Services.Database
             }, 0, cancellationToken);
 
         public Task<MappingCatalogItemDto?> GetItemAsync(Guid catalogId, CancellationToken cancellationToken)
-            => ExecuteAsync<MappingCatalogItemDto?>("GetItem", async (connection, ct) =>
+            => ExecuteAsync<MappingCatalogItemDto?>("GetItem", (c, ct) => QueryItemAsync(c, catalogId, ct), null, cancellationToken);
+
+        public Task<CatalogReadResult<MappingCatalogItemDto?>> FindItemAsync(Guid catalogId, CancellationToken cancellationToken)
+            => ExecuteAsync("FindItem", async (c, ct) => CatalogReadResult<MappingCatalogItemDto?>.Ok(await QueryItemAsync(c, catalogId, ct)),
+                CatalogReadResult<MappingCatalogItemDto?>.Unavailable(), cancellationToken);
+
+        private const string ItemColumns = @"CatalogId, FolderId, SourceSystem, SourceItemKey, Engine, Name, Version, DocType,
+                             ContentHash, SourceRefJson, PairedCatalogId, Retired";
+
+        private static async Task<MappingCatalogItemDto?> QueryItemAsync(SqlConnection connection, Guid catalogId, CancellationToken ct)
+        {
+            using var command = new SqlCommand($"SELECT {ItemColumns} FROM dbo.tbMappingCatalogItem WHERE CatalogId = @CatalogId;", connection);
+            command.Parameters.Add("@CatalogId", SqlDbType.UniqueIdentifier).Value = catalogId;
+            using var reader = await command.ExecuteReaderAsync(ct);
+            return await reader.ReadAsync(ct) ? ReadItem(reader) : null;
+        }
+
+        private static MappingCatalogItemDto ReadItem(SqlDataReader reader)
+        {
+            string? Str(string c) => reader.IsDBNull(reader.GetOrdinal(c)) ? null : reader.GetString(reader.GetOrdinal(c));
+            SourceSystemExtensions.TryParseWireName(reader.GetString(reader.GetOrdinal("SourceSystem")), out var system);
+            var paired = reader.GetOrdinal("PairedCatalogId");
+            return new MappingCatalogItemDto(
+                reader.GetGuid(reader.GetOrdinal("CatalogId")),
+                reader.GetGuid(reader.GetOrdinal("FolderId")),
+                system,
+                reader.GetString(reader.GetOrdinal("SourceItemKey")),
+                reader.GetString(reader.GetOrdinal("Engine")),
+                reader.GetString(reader.GetOrdinal("Name")),
+                Str("Version"), Str("DocType"), Str("ContentHash"), Str("SourceRefJson"),
+                reader.GetBoolean(reader.GetOrdinal("Retired")),
+                reader.IsDBNull(paired) ? null : reader.GetGuid(paired));
+        }
+
+        public Task<CatalogReadResult<IReadOnlyList<MappingCatalogSourceSummary>>> ListSourcesAsync(CancellationToken cancellationToken)
+            => ExecuteAsync("ListSources", async (connection, ct) =>
             {
                 using var command = new SqlCommand(
-                    @"SELECT CatalogId, FolderId, SourceSystem, SourceItemKey, Engine, Name, Version, DocType,
-                             ContentHash, SourceRefJson, PairedCatalogId, Retired
-                      FROM dbo.tbMappingCatalogItem WHERE CatalogId = @CatalogId;", connection);
-                command.Parameters.Add("@CatalogId", SqlDbType.UniqueIdentifier).Value = catalogId;
+                    @"SELECT s.SourceSystem, s.Enabled, s.LastSyncUtc, s.LastStatus, s.LastError,
+                             (SELECT COUNT(*) FROM dbo.tbMappingCatalogFolder f WHERE f.SourceSystem = s.SourceSystem AND f.Retired = 0) AS FolderCount,
+                             (SELECT COUNT(*) FROM dbo.tbMappingCatalogItem i WHERE i.SourceSystem = s.SourceSystem AND i.Retired = 0) AS ItemCount
+                      FROM dbo.tbMappingCatalogSource s ORDER BY s.SourceSystem;", connection);
+                var list = new List<MappingCatalogSourceSummary>();
                 using var reader = await command.ExecuteReaderAsync(ct);
-                if (!await reader.ReadAsync(ct))
-                    return null;
+                while (await reader.ReadAsync(ct))
+                {
+                    if (!SourceSystemExtensions.TryParseWireName(reader.GetString(0), out var system))
+                        continue; // origem desconhecida a esta versão: não quebra a listagem
+                    list.Add(new MappingCatalogSourceSummary(system, reader.GetBoolean(1),
+                        reader.IsDBNull(2) ? null : reader.GetDateTime(2), reader.GetString(3),
+                        reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetInt32(5), reader.GetInt32(6)));
+                }
+                return CatalogReadResult<IReadOnlyList<MappingCatalogSourceSummary>>.Ok(list);
+            }, CatalogReadResult<IReadOnlyList<MappingCatalogSourceSummary>>.Unavailable(), cancellationToken);
 
-                string? Str(string c) => reader.IsDBNull(reader.GetOrdinal(c)) ? null : reader.GetString(reader.GetOrdinal(c));
-                SourceSystemExtensions.TryParseWireName(reader.GetString(reader.GetOrdinal("SourceSystem")), out var system);
-                var paired = reader.GetOrdinal("PairedCatalogId");
-                return new MappingCatalogItemDto(
-                    reader.GetGuid(reader.GetOrdinal("CatalogId")),
-                    reader.GetGuid(reader.GetOrdinal("FolderId")),
-                    system,
-                    reader.GetString(reader.GetOrdinal("SourceItemKey")),
-                    reader.GetString(reader.GetOrdinal("Engine")),
-                    reader.GetString(reader.GetOrdinal("Name")),
-                    Str("Version"), Str("DocType"), Str("ContentHash"), Str("SourceRefJson"),
-                    reader.GetBoolean(reader.GetOrdinal("Retired")),
-                    reader.IsDBNull(paired) ? null : reader.GetGuid(paired));
+        public Task<CatalogReadResult<MappingCatalogSourceDto?>> GetSourceAsync(SourceSystem sourceSystem, CancellationToken cancellationToken)
+            => ExecuteAsync("GetSource", async (connection, ct) =>
+            {
+                using var command = new SqlCommand(
+                    "SELECT Enabled, LastSyncUtc, LastStatus, LastError FROM dbo.tbMappingCatalogSource WHERE SourceSystem = @SourceSystem;", connection);
+                Add(command, "@SourceSystem", SqlDbType.NVarChar, 30, sourceSystem.ToWireName());
+                using var reader = await command.ExecuteReaderAsync(ct);
+                MappingCatalogSourceDto? dto = null;
+                if (await reader.ReadAsync(ct))
+                    dto = new MappingCatalogSourceDto(sourceSystem, reader.GetBoolean(0), reader.IsDBNull(1) ? null : reader.GetDateTime(1),
+                        reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3));
+                return CatalogReadResult<MappingCatalogSourceDto?>.Ok(dto);
+            }, CatalogReadResult<MappingCatalogSourceDto?>.Unavailable(), cancellationToken);
+
+        public Task<CatalogReadResult<MappingCatalogPage<MappingCatalogFolderDto>>> ListFoldersAsync(
+            SourceSystem sourceSystem, int skip, int take, CancellationToken cancellationToken)
+            => ExecuteAsync("ListFolders", async (connection, ct) =>
+            {
+                int total;
+                using (var count = new SqlCommand("SELECT COUNT(*) FROM dbo.tbMappingCatalogFolder WHERE SourceSystem = @S AND Retired = 0;", connection))
+                {
+                    Add(count, "@S", SqlDbType.NVarChar, 30, sourceSystem.ToWireName());
+                    total = Convert.ToInt32(await count.ExecuteScalarAsync(ct));
+                }
+                using var command = new SqlCommand(
+                    @"SELECT FolderId, SourceProjectKey, SourceProjectId, Name, Retired FROM dbo.tbMappingCatalogFolder
+                      WHERE SourceSystem = @S AND Retired = 0 ORDER BY NameSort, FolderId
+                      OFFSET @Skip ROWS FETCH NEXT @Take ROWS ONLY;", connection);
+                Add(command, "@S", SqlDbType.NVarChar, 30, sourceSystem.ToWireName());
+                command.Parameters.Add("@Skip", SqlDbType.Int).Value = skip;
+                command.Parameters.Add("@Take", SqlDbType.Int).Value = take;
+                var list = new List<MappingCatalogFolderDto>();
+                using var reader = await command.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                    list.Add(new MappingCatalogFolderDto(reader.GetGuid(0), sourceSystem, reader.GetString(1),
+                        reader.IsDBNull(2) ? null : reader.GetInt64(2), reader.GetString(3), reader.GetBoolean(4)));
+                return CatalogReadResult<MappingCatalogPage<MappingCatalogFolderDto>>.Ok(new(list, total));
+            }, CatalogReadResult<MappingCatalogPage<MappingCatalogFolderDto>>.Unavailable(), cancellationToken);
+
+        public Task<CatalogReadResult<MappingCatalogFolderDto?>> GetFolderAsync(Guid folderId, CancellationToken cancellationToken)
+            => ExecuteAsync("GetFolder", async (connection, ct) =>
+            {
+                using var command = new SqlCommand(
+                    "SELECT SourceSystem, SourceProjectKey, SourceProjectId, Name, Retired FROM dbo.tbMappingCatalogFolder WHERE FolderId = @F;", connection);
+                command.Parameters.Add("@F", SqlDbType.UniqueIdentifier).Value = folderId;
+                using var reader = await command.ExecuteReaderAsync(ct);
+                MappingCatalogFolderDto? dto = null;
+                if (await reader.ReadAsync(ct) && SourceSystemExtensions.TryParseWireName(reader.GetString(0), out var system))
+                    dto = new MappingCatalogFolderDto(folderId, system, reader.GetString(1),
+                        reader.IsDBNull(2) ? null : reader.GetInt64(2), reader.GetString(3), reader.GetBoolean(4));
+                return CatalogReadResult<MappingCatalogFolderDto?>.Ok(dto);
+            }, CatalogReadResult<MappingCatalogFolderDto?>.Unavailable(), cancellationToken);
+
+        public Task<CatalogReadResult<MappingCatalogPage<MappingCatalogItemDto>>> ListItemsAsync(
+            Guid folderId, string? engine, string? nameQuery, bool includeRetired, int skip, int take, CancellationToken cancellationToken)
+            => ExecuteAsync("ListItems", async (connection, ct) =>
+            {
+                // WHERE só com fragmentos CONSTANTES; valores sempre por SqlParameter.
+                const string where = @"FolderId = @F AND (@IncludeRetired = 1 OR Retired = 0)
+                                       AND (@Engine IS NULL OR Engine = @Engine) AND (@Q IS NULL OR NameSort LIKE @Q ESCAPE '\')";
+                void Bind(SqlCommand c)
+                {
+                    c.Parameters.Add("@F", SqlDbType.UniqueIdentifier).Value = folderId;
+                    c.Parameters.Add("@IncludeRetired", SqlDbType.Bit).Value = includeRetired;
+                    Add(c, "@Engine", SqlDbType.NVarChar, 10, engine);
+                    var q = string.IsNullOrWhiteSpace(nameQuery) ? null
+                        : "%" + NameSort(nameQuery).Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_").Replace("[", "\\[") + "%";
+                    Add(c, "@Q", SqlDbType.NVarChar, MaxName + 10, q);
+                }
+                int total;
+                using (var count = new SqlCommand($"SELECT COUNT(*) FROM dbo.tbMappingCatalogItem WHERE {where};", connection))
+                {
+                    Bind(count);
+                    total = Convert.ToInt32(await count.ExecuteScalarAsync(ct));
+                }
+                using var command = new SqlCommand(
+                    $@"SELECT {ItemColumns} FROM dbo.tbMappingCatalogItem WHERE {where}
+                       ORDER BY NameSort, CatalogId OFFSET @Skip ROWS FETCH NEXT @Take ROWS ONLY;", connection);
+                Bind(command);
+                command.Parameters.Add("@Skip", SqlDbType.Int).Value = skip;
+                command.Parameters.Add("@Take", SqlDbType.Int).Value = take;
+                var list = new List<MappingCatalogItemDto>();
+                using var reader = await command.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                    list.Add(ReadItem(reader));
+                return CatalogReadResult<MappingCatalogPage<MappingCatalogItemDto>>.Ok(new(list, total));
+            }, CatalogReadResult<MappingCatalogPage<MappingCatalogItemDto>>.Unavailable(), cancellationToken);
+
+        public async Task<DateTime?> GetServerUtcNowAsync(CancellationToken cancellationToken)
+            => await ExecuteAsync<DateTime?>("GetServerUtcNow", async (connection, ct) =>
+            {
+                using var command = new SqlCommand("SELECT SYSUTCDATETIME();", connection);
+                return (DateTime?)(DateTime)(await command.ExecuteScalarAsync(ct))!;
             }, null, cancellationToken);
+
+        public async Task<IAsyncDisposable?> TryAcquireSyncLockAsync(SourceSystem sourceSystem, CancellationToken cancellationToken)
+        {
+            SqlConnection? connection = null;
+            try
+            {
+                connection = new SqlConnection(_connectionString);
+                await connection.OpenAsync(cancellationToken);
+                var resource = SyncLockResource(sourceSystem);
+                // ✅ Dono Session numa conexão DEDICADA, aberta enquanto o sync roda (as escritas usam outras
+                // conexões). Sem espera: se outra instância sincroniza, esta pula.
+                using var command = new SqlCommand(
+                    "DECLARE @r INT; EXEC @r = sp_getapplock @Resource = @Res, @LockMode = 'Exclusive', @LockOwner = 'Session', @LockTimeout = 0; SELECT @r;",
+                    connection);
+                Add(command, "@Res", SqlDbType.NVarChar, 255, resource);
+                var code = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+                if (code >= 0)
+                    return new SyncLock(connection, resource, _logger);
+
+                _logger.LogInformation("MappingCatalogStore: sync de {SourceSystem} já em execução em outra instância (sp_getapplock={Code}); pulando.", sourceSystem.ToWireName(), code);
+                await connection.DisposeAsync();
+                return null;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                if (connection != null) await connection.DisposeAsync();
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "MappingCatalogStore.TryAcquireSyncLock falhou — IdentityDatabase indisponível; sync não executará.");
+                if (connection != null) await connection.DisposeAsync();
+                return null;
+            }
+        }
+
+        internal static string SyncLockResource(SourceSystem system) => $"lp-mapping-catalog-sync:{system.ToWireName()}";
+
+        private sealed class SyncLock(SqlConnection connection, string resource, ILogger logger) : IAsyncDisposable
+        {
+            public async ValueTask DisposeAsync()
+            {
+                try
+                {
+                    using var command = new SqlCommand("EXEC sp_releaseapplock @Resource = @Res, @LockOwner = 'Session';", connection);
+                    Add(command, "@Res", SqlDbType.NVarChar, 255, resource);
+                    await command.ExecuteNonQueryAsync();
+                }
+                catch (Exception ex)
+                {
+                    // Fechar a conexão também libera o lock de sessão; só registra.
+                    logger.LogWarning(ex, "MappingCatalogStore: falha ao liberar applock {Resource}; a conexão será fechada.", resource);
+                }
+                finally
+                {
+                    await connection.DisposeAsync();
+                }
+            }
+        }
 
         /// <summary>Abre conexão + garante schema; qualquer falha (exceto cancelamento) degrada ao valor padrão.</summary>
         private async Task<T> ExecuteAsync<T>(string operation, Func<SqlConnection, CancellationToken, Task<T>> action,

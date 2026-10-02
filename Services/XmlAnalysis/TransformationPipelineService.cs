@@ -21,12 +21,15 @@ namespace LayoutParserApi.Services.XmlAnalysis
         private readonly ILogger<TransformationPipelineService> _logger;
         private readonly string _tclBasePath;
         private readonly string _xslBasePath;
+        private readonly IGeneratedXslResolver? _generatedXslResolver;
 
         public TransformationPipelineService(
             ILogger<TransformationPipelineService> logger,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IGeneratedXslResolver? generatedXslResolver = null)
         {
             _logger = logger;
+            _generatedXslResolver = generatedXslResolver;
             _tclBasePath = configuration["TransformationPipeline:TclPath"] ?? @"C:\inetpub\wwwroot\layoutparser\TCL";
             _xslBasePath = configuration["TransformationPipeline:XslPath"] ?? @"C:\inetpub\wwwroot\layoutparser\XSL";
         }
@@ -108,19 +111,28 @@ namespace LayoutParserApi.Services.XmlAnalysis
                     sourceDocumentType, targetDocumentType);
 
                 // Carregar XSL apropriado
+                // Disco primeiro (compatibilidade); depois artefato gerado Ready (issue #642, opção b).
                 var xslPath = FindXslFile(layoutName);
+                string? generatedXsl = null;
                 if (string.IsNullOrEmpty(xslPath) || !File.Exists(xslPath))
                 {
-                    result.Success = false;
-                    result.ErrorCode = "xsl_not_found";
-                    result.Errors.Add($"Arquivo XSL não encontrado para transformação {sourceDocumentType} → {targetDocumentType}");
-                    return result;
+                    xslPath = null;
+                    generatedXsl = await TryGetGeneratedXslAsync(layoutName, result);
+                    if (generatedXsl == null)
+                    {
+                        result.Success = false;
+                        result.ErrorCode = "xsl_not_found";
+                        result.Errors.Add($"Arquivo XSL não encontrado para transformação {sourceDocumentType} → {targetDocumentType}");
+                        return result;
+                    }
                 }
 
-                result.XslPath = xslPath;
+                if (xslPath != null) result.XslPath = xslPath;
 
                 // Aplicar transformação XSL
-                var finalXml = await ApplyXsltTransformAsync(xmlContent, xslPath, result);
+                var finalXml = generatedXsl != null
+                    ? await ApplyGeneratedXsltTransformAsync(xmlContent, generatedXsl, result)
+                    : await ApplyXsltTransformAsync(xmlContent, xslPath!, result);
                 if (finalXml == null)
                 {
                     result.Success = false;
@@ -313,6 +325,12 @@ namespace LayoutParserApi.Services.XmlAnalysis
                 var xslPath = FindXslFile(layoutName);
                 if (string.IsNullOrEmpty(xslPath) || !File.Exists(xslPath))
                 {
+                    // Issue #642 (b): sem arquivo em disco, tenta o XSL do artefato gerado Ready.
+                    // Só chega aqui com TCL já resolvido (etapa 1) — o TCL nunca é inventado.
+                    var generatedXsl = await TryGetGeneratedXslAsync(layoutName, result);
+                    if (generatedXsl != null)
+                        return await ApplyGeneratedXsltTransformAsync(intermediateXml, generatedXsl, result);
+
                     result.ErrorCode = "xsl_not_found";
                     result.Errors.Add($"Arquivo XSL não encontrado para transformação Intermediate → {targetDocumentType}");
                     return null;
@@ -331,6 +349,66 @@ namespace LayoutParserApi.Services.XmlAnalysis
                 result.Errors.Add($"Erro na transformação XML Intermediário → XML Final: {ex.Message}");
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Busca o XSL do artefato gerado Ready (nunca lança; falha => null => erro exato do chamador).
+        /// O TCL gerado/da referência virá pelo catálogo (#636) numa fase seguinte: por ora entrada TXT
+        /// sem TCL em disco segue em <c>map_not_found</c>.
+        /// </summary>
+        private async Task<string?> TryGetGeneratedXslAsync(string? layoutName, TransformationPipelineResult result)
+        {
+            if (_generatedXslResolver == null || string.IsNullOrWhiteSpace(layoutName)) return null;
+            try
+            {
+                var xsl = await _generatedXslResolver.ResolveReadyXslAsync(layoutName);
+                if (xsl != null)
+                {
+                    _logger.LogInformation("XSL ausente em disco; usando artefato gerado Ready. Layout: {LayoutName}",
+                        LogMessageSanitizer.Sanitize(layoutName));
+                    result.Warnings.Add("XSL obtido do artefato gerado (não havia arquivo em disco).");
+                }
+                return xsl;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Falha ao resolver XSL gerado para {LayoutName}", LogMessageSanitizer.Sanitize(layoutName));
+                return null;
+            }
+        }
+
+        /// <summary>XSLT a partir de conteúdo em memória: sem document() e sem resolver externo.</summary>
+        private async Task<string?> ApplyGeneratedXsltTransformAsync(string xmlContent, string xslContent, TransformationPipelineResult result)
+        {
+            try
+            {
+                var xslt = new XslCompiledTransform();
+                var readerSettings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
+                using (var xslReader = XmlReader.Create(new StringReader(xslContent), readerSettings))
+                    xslt.Load(xslReader, new XsltSettings(), null);
+                return await Task.FromResult(RunTransform(xslt, xmlContent, readerSettings));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro ao aplicar XSLT gerado");
+                result.Errors.Add($"Erro na transformação XSLT: {ex.Message}");
+                return null;
+            }
+        }
+
+        private static string RunTransform(XslCompiledTransform xslt, string xmlContent, XmlReaderSettings readerSettings)
+        {
+            using var xmlReader = XmlReader.Create(new StringReader(xmlContent), readerSettings);
+            using var stringWriter = new StringWriter();
+            using var xmlWriter = XmlWriter.Create(stringWriter, new XmlWriterSettings
+            {
+                Indent = true,
+                IndentChars = "  ",
+                OmitXmlDeclaration = false,
+                Encoding = Encoding.UTF8
+            });
+            xslt.Transform(xmlReader, xmlWriter);
+            return stringWriter.ToString();
         }
 
         /// <summary>
