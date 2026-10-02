@@ -13,9 +13,10 @@ namespace LayoutParserApi.Tests.Catalog
 
         public Task<bool> UpsertSourceAsync(MappingCatalogSourceDto s, CancellationToken ct) { if (Down) return Task.FromResult(false); Sources[s.SourceSystem] = s; return Task.FromResult(true); }
         public Task<bool> UpsertFolderAsync(MappingCatalogFolderDto f, CancellationToken ct) { if (Down) return Task.FromResult(false); Folders[f.FolderId] = f; return Task.FromResult(true); }
-        public Task<bool> UpsertItemAsync(MappingCatalogItemDto i, CancellationToken ct) { if (Down) return Task.FromResult(false); Items[i.CatalogId] = i with { Retired = false }; return Task.FromResult(true); }
+        public Task<bool> UpsertItemAsync(MappingCatalogItemDto i, CancellationToken ct) { if (Down || FailItemUpserts.Contains(i.CatalogId)) return Task.FromResult(false); Items[i.CatalogId] = i with { Retired = false }; return Task.FromResult(true); }
         public Task<bool> RetireItemAsync(Guid id, CancellationToken ct) => Task.FromResult(false);
-        public Task<int> RetireUnseenAsync(SourceSystem s, DateTime before, CancellationToken ct) => Task.FromResult(0);
+        public List<(SourceSystem System, DateTime Before)> RetireCalls = new();
+        public Task<int> RetireUnseenAsync(SourceSystem s, DateTime before, CancellationToken ct) { RetireCalls.Add((s, before)); return Task.FromResult(3); }
         public Task<MappingCatalogItemDto?> GetItemAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.GetValueOrDefault(id));
 
         public Task<CatalogReadResult<IReadOnlyList<MappingCatalogSourceSummary>>> ListSourcesAsync(CancellationToken ct)
@@ -53,5 +54,24 @@ namespace LayoutParserApi.Tests.Catalog
 
         public Task<CatalogReadResult<MappingCatalogItemDto?>> FindItemAsync(Guid id, CancellationToken ct)
             => Task.FromResult(Down ? CatalogReadResult<MappingCatalogItemDto?>.Unavailable() : CatalogReadResult<MappingCatalogItemDto?>.Ok(Items.GetValueOrDefault(id)));
+
+        public DateTime? ServerNow = new DateTime(2026, 10, 2, 12, 0, 0, DateTimeKind.Utc);
+        public bool LockBusy;
+        public int LocksTaken, LocksReleased;
+        public HashSet<Guid> FailItemUpserts = new();
+
+        public Task<DateTime?> GetServerUtcNowAsync(CancellationToken ct) => Task.FromResult(ServerNow);
+
+        public Task<IAsyncDisposable?> TryAcquireSyncLockAsync(SourceSystem s, CancellationToken ct)
+        {
+            if (LockBusy || Down) return Task.FromResult<IAsyncDisposable?>(null);
+            LocksTaken++;
+            return Task.FromResult<IAsyncDisposable?>(new Releaser(this));
+        }
+
+        private sealed class Releaser(FakeMappingCatalogStore store) : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync() { store.LocksReleased++; return ValueTask.CompletedTask; }
+        }
     }
 }

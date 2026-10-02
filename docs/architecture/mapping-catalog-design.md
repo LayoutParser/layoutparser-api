@@ -189,3 +189,21 @@ Somente leitura no banco compartilhado; `content` nunca loga corpo; autorizaçã
 11. Adaptador Map4Connect — depende de definição da fonte (dono).
 12. Runbook/teste "desligar adaptador sem quebrar contrato" (Quinn/Duda).
 13. Documentação Swagger/README do catálogo e deprecação de `mapperGuid` (Duda).
+
+## 6. Configuração e operação do sync (Fase 2 — issues #629 a #632)
+
+```json
+"MappingCatalog": {
+  "Sources": { "Neogrid": { "Enabled": false }, "Own": { "Enabled": false } },
+  "Sync": { "IntervalHours": 6, "InitialDelaySeconds": 120 }
+}
+```
+
+- **Default DESLIGADO por adaptador** (ambiente é produção: nada é gravado em `tbMappingCatalog*` até o dono ligar
+  `MappingCatalog:Sources:{Neogrid|Own}:Enabled=true`, via env var `MappingCatalog__Sources__Neogrid__Enabled`). O flag
+  controla só o SYNC; leitura de árvore e `content` seguem funcionando com o que já estiver no índice.
+- Gatilho manual: `POST /api/mapping-catalog/sync[?sourceSystem=neogrid]` (sudo; 202 enfileirado, 409 se desligado).
+- Lock por origem: `sp_getapplock` (`lp-mapping-catalog-sync:{origem}`) em conexão dedicada; instância concorrente pula.
+- `RetireUnseen` só após sync COMPLETO, sem falha de gravação e com ≥1 item; corte tomado do relógio do SQL.
+- Neogrid: `catalogId` do item inclui o nome do arquivo com extensão (`{docType}/{versao}/{arquivo.ext}`) para o par
+  TCL/XSL não colidir; o par é ligado por `pairedCatalogId`. Own: pasta única "Sem projeto", engine `xslt`, só `ready`.

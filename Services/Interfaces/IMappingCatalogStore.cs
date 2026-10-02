@@ -57,5 +57,17 @@ namespace LayoutParserApi.Services.Interfaces
 
         /// <summary>Como <see cref="GetItemAsync"/>, mas distingue "não existe" de "indisponível".</summary>
         Task<CatalogReadResult<MappingCatalogItemDto?>> FindItemAsync(Guid catalogId, CancellationToken cancellationToken);
+
+        // ---- Suporte ao sync (issue #632) ----
+
+        /// <summary>Hora UTC do SERVIDOR SQL (mesmo relógio de <c>LastSeenUtc</c>); null se indisponível. Base do corte do RetireUnseen.</summary>
+        Task<DateTime?> GetServerUtcNowAsync(CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Trava exclusiva por origem (<c>sp_getapplock</c>, dono Session, sem espera) numa conexão dedicada,
+        /// mantida aberta até o <c>DisposeAsync</c> do retorno. Null = outra instância já está sincronizando OU
+        /// IdentityDatabase indisponível (o motivo é logado).
+        /// </summary>
+        Task<IAsyncDisposable?> TryAcquireSyncLockAsync(SourceSystem sourceSystem, CancellationToken cancellationToken);
     }
 }

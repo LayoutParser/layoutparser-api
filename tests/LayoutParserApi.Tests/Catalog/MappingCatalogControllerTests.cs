@@ -18,6 +18,12 @@ namespace LayoutParserApi.Tests.Catalog
             public Task<MappingContent?> GetContentAsync(MappingCatalogSourceRef r, CancellationToken ct) => Task.FromResult(Content());
         }
 
+        private sealed class StubTrigger : IMappingCatalogSyncTrigger
+        {
+            public CatalogSyncTriggerResult Result = CatalogSyncTriggerResult.Accepted;
+            public CatalogSyncTriggerResult Trigger(SourceSystem? only) => Result;
+        }
+
         private static (MappingCatalogController Ctl, FakeMappingCatalogStore Store, StubSource Src) Build(bool neogridEnabled = true)
         {
             var store = new FakeMappingCatalogStore();
@@ -25,7 +31,7 @@ namespace LayoutParserApi.Tests.Catalog
             var opts = new MappingCatalogOptions();
             opts.Sources["Neogrid"] = new MappingCatalogSourceToggle { Enabled = neogridEnabled };
             var svc = new MappingCatalogService(store, [src], new TestOptionsMonitor<MappingCatalogOptions>(opts), NullLogger<MappingCatalogService>.Instance);
-            return (new MappingCatalogController(svc), store, src);
+            return (new MappingCatalogController(svc, new StubTrigger()), store, src);
         }
 
         private static MappingCatalogItemDto Item(string name, Guid folder, string engine = "tcl", bool retired = false)
@@ -102,6 +108,14 @@ namespace LayoutParserApi.Tests.Catalog
             var s = Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<MappingCatalogSourceSummary>>(ok.Value));
             Assert.False(s.Enabled);
             Assert.Equal("unavailable", s.Status);
+        }
+
+        [Fact]
+        public void Sync_mapeia_aceito_desligado_e_origem_invalida()
+        {
+            var (ctl, _, _) = Build();
+            Assert.IsType<AcceptedResult>(ctl.Sync("neogrid"));
+            Assert.IsType<BadRequestObjectResult>(ctl.Sync("xpto"));
         }
 
         [Fact]

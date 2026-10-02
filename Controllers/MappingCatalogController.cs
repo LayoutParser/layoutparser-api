@@ -1,6 +1,7 @@
 using LayoutParserApi.Models.Catalog;
 using LayoutParserApi.Services.Catalog;
 using LayoutParserApi.Services.Filters;
+using LayoutParserApi.Services.Security;
 
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,10 +18,12 @@ namespace LayoutParserApi.Controllers
     public class MappingCatalogController : ControllerBase
     {
         private readonly IMappingCatalogService _catalog;
+        private readonly IMappingCatalogSyncTrigger _syncTrigger;
 
-        public MappingCatalogController(IMappingCatalogService catalog)
+        public MappingCatalogController(IMappingCatalogService catalog, IMappingCatalogSyncTrigger syncTrigger)
         {
             _catalog = catalog;
+            _syncTrigger = syncTrigger;
         }
 
         /// <summary>Nível 1: origens com contagens, último sync e status.</summary>
@@ -85,6 +88,35 @@ namespace LayoutParserApi.Controllers
         [ProducesResponseType(typeof(MappingCatalogContentResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetContent(Guid catalogId, CancellationToken cancellationToken = default)
             => Map(await _catalog.GetContentAsync(catalogId, cancellationToken));
+
+        /// <summary>
+        /// Dispara o sync do índice em background (gatilho manual) e responde na hora. Restrito a sudo
+        /// (não-sudo recebe 404). Só sincroniza origens com o flag <c>MappingCatalog:Sources:{Origem}:Enabled</c> ligado.
+        /// </summary>
+        /// <param name="sourceSystem">Opcional: restringe a uma origem (connect_us | neogrid | map4connect | own).</param>
+        /// <response code="202">Sync enfileirado; acompanhe por <c>GET sources</c> (<c>lastSyncUtc</c>/<c>status</c>).</response>
+        /// <response code="400"><c>sourceSystem</c> desconhecido.</response>
+        /// <response code="409">Origem (ou todas) desligada na configuração.</response>
+        /// <response code="429">Fila de sync cheia.</response>
+        [HttpPost("sync")]
+        [RequireSudo]
+        [ServiceFilter(typeof(AuditActionFilter))]
+        public IActionResult Sync([FromQuery] string? sourceSystem = null)
+        {
+            SourceSystem? only = null;
+            if (!string.IsNullOrWhiteSpace(sourceSystem))
+            {
+                if (!SourceSystemExtensions.TryParseWireName(sourceSystem, out var parsed))
+                    return BadRequest(new { error = "sourceSystem inválido. Use: connect_us, neogrid, map4connect ou own." });
+                only = parsed;
+            }
+            return _syncTrigger.Trigger(only) switch
+            {
+                CatalogSyncTriggerResult.Accepted => Accepted(new { status = "queued", sourceSystem = only?.ToWireName() }),
+                CatalogSyncTriggerResult.Disabled => Conflict(new { error = "Sync desligado na configuração para a(s) origem(ns) pedida(s) (MappingCatalog:Sources:{Origem}:Enabled)." }),
+                _ => StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Fila de sync cheia; tente novamente em instantes." }),
+            };
+        }
 
         private IActionResult Map<T>(CatalogResult<T> result) => result.Outcome switch
         {

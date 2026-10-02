@@ -290,6 +290,72 @@ namespace LayoutParserApi.Services.Database
                 return CatalogReadResult<MappingCatalogPage<MappingCatalogItemDto>>.Ok(new(list, total));
             }, CatalogReadResult<MappingCatalogPage<MappingCatalogItemDto>>.Unavailable(), cancellationToken);
 
+        public async Task<DateTime?> GetServerUtcNowAsync(CancellationToken cancellationToken)
+            => await ExecuteAsync<DateTime?>("GetServerUtcNow", async (connection, ct) =>
+            {
+                using var command = new SqlCommand("SELECT SYSUTCDATETIME();", connection);
+                return (DateTime?)(DateTime)(await command.ExecuteScalarAsync(ct))!;
+            }, null, cancellationToken);
+
+        public async Task<IAsyncDisposable?> TryAcquireSyncLockAsync(SourceSystem sourceSystem, CancellationToken cancellationToken)
+        {
+            SqlConnection? connection = null;
+            try
+            {
+                connection = new SqlConnection(_connectionString);
+                await connection.OpenAsync(cancellationToken);
+                var resource = SyncLockResource(sourceSystem);
+                // ✅ Dono Session numa conexão DEDICADA, aberta enquanto o sync roda (as escritas usam outras
+                // conexões). Sem espera: se outra instância sincroniza, esta pula.
+                using var command = new SqlCommand(
+                    "DECLARE @r INT; EXEC @r = sp_getapplock @Resource = @Res, @LockMode = 'Exclusive', @LockOwner = 'Session', @LockTimeout = 0; SELECT @r;",
+                    connection);
+                Add(command, "@Res", SqlDbType.NVarChar, 255, resource);
+                var code = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+                if (code >= 0)
+                    return new SyncLock(connection, resource, _logger);
+
+                _logger.LogInformation("MappingCatalogStore: sync de {SourceSystem} já em execução em outra instância (sp_getapplock={Code}); pulando.", sourceSystem.ToWireName(), code);
+                await connection.DisposeAsync();
+                return null;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                if (connection != null) await connection.DisposeAsync();
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "MappingCatalogStore.TryAcquireSyncLock falhou — IdentityDatabase indisponível; sync não executará.");
+                if (connection != null) await connection.DisposeAsync();
+                return null;
+            }
+        }
+
+        internal static string SyncLockResource(SourceSystem system) => $"lp-mapping-catalog-sync:{system.ToWireName()}";
+
+        private sealed class SyncLock(SqlConnection connection, string resource, ILogger logger) : IAsyncDisposable
+        {
+            public async ValueTask DisposeAsync()
+            {
+                try
+                {
+                    using var command = new SqlCommand("EXEC sp_releaseapplock @Resource = @Res, @LockOwner = 'Session';", connection);
+                    Add(command, "@Res", SqlDbType.NVarChar, 255, resource);
+                    await command.ExecuteNonQueryAsync();
+                }
+                catch (Exception ex)
+                {
+                    // Fechar a conexão também libera o lock de sessão; só registra.
+                    logger.LogWarning(ex, "MappingCatalogStore: falha ao liberar applock {Resource}; a conexão será fechada.", resource);
+                }
+                finally
+                {
+                    await connection.DisposeAsync();
+                }
+            }
+        }
+
         /// <summary>Abre conexão + garante schema; qualquer falha (exceto cancelamento) degrada ao valor padrão.</summary>
         private async Task<T> ExecuteAsync<T>(string operation, Func<SqlConnection, CancellationToken, Task<T>> action,
             T fallback, CancellationToken cancellationToken)
