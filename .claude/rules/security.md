@@ -241,6 +241,16 @@ Os segredos antigos **persistem nos commits anteriores** mesmo após este commit
 
 ## Alerta de deploy por e-mail (2026-08-18)
 
+> **Nota de 2026-10-02 — DESATUALIZADO / NOT ACTIVE:** o `deploy.yml` (Windows, servidor .42)
+> foi **removido** do repositório (commit `72f4906`). O alerta SMTP descrito nesta seção referia-se
+> a ele e **não está mais ativo**. A produção agora é o Linux, e o deploy é
+> `.github/workflows/deploy-linux.yml` (push em `master` com aprovação de 1 clique no environment
+> `production`, backup + smoke test `/health/ready` com rollback automático; commit `2db8af0`).
+> A mecânica e os secrets `SMTP_*`/`ALERT_EMAIL_TO` abaixo só voltam a valer **se o alerta for
+> portado ao `deploy-linux.yml`** — decisão do dono, ainda não tomada. Texto preservado como
+> histórico; as demais menções a `deploy.yml` neste arquivo (linhas sobre CI/Gemini) também se
+> referem ao workflow Windows removido.
+
 Item 1 do raio-X de maturidade (`docs/architecture/specs-execucao-maturidade-2026-08-16.md`).
 Canal decidido pelo dono: **e-mail** (Teams/Slack ficaram de fora — pago). Implementado em
 `.github/workflows/deploy.yml`, usando a Action gratuita `dawidd6/action-send-mail@v3`, disparada

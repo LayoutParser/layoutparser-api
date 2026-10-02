@@ -724,13 +724,14 @@ separately — `layout-tree.rules[]` alone is not the complete link list for a m
 ### 8.4 Estado de produção vs `develop` / Production vs `develop` status
 
 **🇧🇷** Os contratos das seções 8.5 a 8.10 abaixo estão **mesclados em `develop`** (referência:
-commit `5b0f103`). O deploy de produção é disparado por push em `master`
-([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)), portanto o que está em `develop`
+commit `5b0f103`). O deploy de produção (Linux) é disparado por push em `master`
+([`.github/workflows/deploy-linux.yml`](.github/workflows/deploy-linux.yml), com aprovação manual de
+1 clique no environment `production`; ignora `docs/**` e `**/*.md`), portanto o que está em `develop`
 **não implica** que esteja rodando no servidor: confira o último deploy antes de assumir que um
 endpoint existe lá. Este README não registra datas de deploy.
 
 **🇺🇸** The contracts in 8.5 to 8.10 are **merged into `develop`** (reference: commit `5b0f103`).
-Production deploys are triggered by a push to `master`, so being in `develop` **does not imply** the
+Production (Linux) deploys are triggered by a push to `master` (`deploy-linux.yml`, gated by a one-click approval on the `production` environment), so being in `develop` **does not imply** the
 endpoint is live on the server: check the latest deploy first. This README records no deploy dates.
 
 ### 8.5 `GET .../mappings/{mapperGuid}/generated-transformation` — candidato TCL/XSLT gerado automaticamente / auto-generated TCL/XSLT candidate
