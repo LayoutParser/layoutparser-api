@@ -55,19 +55,18 @@ namespace LayoutParserApi.Services.Email
 
             while (sentToday < _options.DailyLimit && await store.ClaimNextAsync(_options.MaxAttempts, ct) is { } email)
             {
-                var masked = EmailMasking.Mask(email.ToEmail);
                 try
                 {
                     await _sender.SendAsync(new EmailMessage(email.ToEmail, email.Subject, email.Body), ct);
                     await store.MarkSentAsync(email.EmailId, ct);
                     sentToday++;
-                    _logger.LogInformation("E-mail {EmailId} enviado (Template={Template}, WorkspaceId={WorkspaceId}, Destinatario={Destinatario}, Tentativa={Attempts})",
-                        email.EmailId, email.Template, email.DedupeKey, masked, email.Attempts);
+                    _logger.LogInformation("E-mail {EmailId} enviado (Template={Template}, WorkspaceId={WorkspaceId}, Tentativa={Attempts})",
+                        email.EmailId, email.Template, email.DedupeKey, email.Attempts);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogWarning("Falha ao enviar e-mail {EmailId} (Template={Template}, WorkspaceId={WorkspaceId}, Destinatario={Destinatario}, Tentativa={Attempts}): {Error}",
-                        email.EmailId, email.Template, email.DedupeKey, masked, email.Attempts, ex.GetType().Name);
+                    _logger.LogWarning("Falha ao enviar e-mail {EmailId} (Template={Template}, WorkspaceId={WorkspaceId}, Tentativa={Attempts}): {Error}",
+                        email.EmailId, email.Template, email.DedupeKey, email.Attempts, ex.GetType().Name);
                     await store.MarkFailedAsync(email.EmailId, ex.GetType().Name, _options.MaxAttempts, ct);
                 }
             }

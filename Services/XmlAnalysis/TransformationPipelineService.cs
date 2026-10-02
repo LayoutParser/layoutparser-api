@@ -382,7 +382,7 @@ namespace LayoutParserApi.Services.XmlAnalysis
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Falha ao resolver o TCL do catálogo {CatalogId}", catalogId);
+                _logger.LogWarning(ex, "Falha ao resolver o TCL do catálogo {CatalogId}", LogMessageSanitizer.Sanitize(catalogId.ToString()));
                 return null;
             }
         }

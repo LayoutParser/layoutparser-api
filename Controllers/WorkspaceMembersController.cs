@@ -186,8 +186,8 @@ namespace LayoutParserApi.Controllers
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     // Timeout do lock de dedupe (50001) ou SQL fora do ar: 503 claro e retentável, nunca 500 cru.
-                    _logger.LogWarning(ex, "Outbox indisponível ao reenviar convite (WorkspaceId={WorkspaceId}, Destinatario={Destinatario})",
-                        workspaceId, EmailMasking.Mask(member.Email));
+                    _logger.LogWarning(ex, "Outbox indisponível ao reenviar convite (WorkspaceId={WorkspaceId})",
+                        workspaceId);
                     Response.Headers["Retry-After"] = "5";
                     return StatusCode(StatusCodes.Status503ServiceUnavailable, new
                     {
@@ -195,8 +195,8 @@ namespace LayoutParserApi.Controllers
                         error = "A fila de e-mails está ocupada no momento; tente novamente em instantes."
                     });
                 }
-                _logger.LogInformation("Reenvio de convite: e-mail {EmailId} (Enfileirado={Enqueued}, Template={Template}, WorkspaceId={WorkspaceId}, Destinatario={Destinatario}, SmtpConfigured={SmtpConfigured})",
-                    r.EmailId, r.Enqueued, WelcomeEmailTemplate.Name, workspaceId, EmailMasking.Mask(member.Email), _emailSender.IsConfigured);
+                _logger.LogInformation("Reenvio de convite: e-mail {EmailId} (Enfileirado={Enqueued}, Template={Template}, WorkspaceId={WorkspaceId}, SmtpConfigured={SmtpConfigured})",
+                    r.EmailId, r.Enqueued, WelcomeEmailTemplate.Name, workspaceId, _emailSender.IsConfigured);
 
                 return StatusCode(StatusCodes.Status202Accepted, new
                 {
@@ -218,11 +218,11 @@ namespace LayoutParserApi.Controllers
                 var (subject, body) = WelcomeEmailTemplate.Render(workspace.Name, _emailOptions.PortalUrl);
                 var r = await _outbox.EnqueueAsync(email, WelcomeEmailTemplate.Name, workspace.WorkspaceId.ToString("N"), subject, body, cancellationToken);
                 if (r.Enqueued)
-                    _logger.LogInformation("E-mail {EmailId} enfileirado (Template={Template}, WorkspaceId={WorkspaceId}, Destinatario={Destinatario}, SmtpConfigured={SmtpConfigured})",
-                        r.EmailId, WelcomeEmailTemplate.Name, workspace.WorkspaceId, EmailMasking.Mask(email), _emailSender.IsConfigured);
+                    _logger.LogInformation("E-mail {EmailId} enfileirado (Template={Template}, WorkspaceId={WorkspaceId}, SmtpConfigured={SmtpConfigured})",
+                        r.EmailId, WelcomeEmailTemplate.Name, workspace.WorkspaceId, _emailSender.IsConfigured);
                 else
-                    _logger.LogInformation("E-mail deduplicado (já existe {EmailId} nas últimas 24h; Template={Template}, WorkspaceId={WorkspaceId}, Destinatario={Destinatario})",
-                        r.EmailId, WelcomeEmailTemplate.Name, workspace.WorkspaceId, EmailMasking.Mask(email));
+                    _logger.LogInformation("E-mail deduplicado (já existe {EmailId} nas últimas 24h; Template={Template}, WorkspaceId={WorkspaceId})",
+                        r.EmailId, WelcomeEmailTemplate.Name, workspace.WorkspaceId);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

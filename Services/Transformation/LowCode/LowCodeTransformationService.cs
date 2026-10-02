@@ -76,7 +76,7 @@ namespace LayoutParserApi.Services.Transformation.LowCode
                 try
                 {
                     _logger.LogInformation("Executando transformação low-code via HTTP: corr={CorrelationId} mapperId={MapperId}, mapperName={MapperName}",
-                        correlationId, idHttp, nameHttp);
+                        LayoutParserApi.Services.Logging.LogMessageSanitizer.Sanitize(correlationId, maxLength: 200), LayoutParserApi.Services.Logging.LogMessageSanitizer.SanitizeOptional(idHttp, 200), LayoutParserApi.Services.Logging.LogMessageSanitizer.SanitizeOptional(nameHttp, 200));
                     var resp = await _httpRunner.TransformAsync(inputContent ?? "", fileName ?? "document.txt", idHttp, nameHttp, correlationId, cancellationToken);
                     if (resp.Warnings.Count > 0)
                         _logger.LogInformation("Runner low-code HTTP devolveu {WarningCount} warning(s) (corr={CorrelationId}, durationMs={DurationMs})",
