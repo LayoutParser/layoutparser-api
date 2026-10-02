@@ -81,6 +81,11 @@ namespace LayoutParserApi.Controllers
         /// <response code="503">Catálogo de mappers (tbMapper) indisponível no momento.</response>
         [HttpGet("generated-transformation")]
         [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
+        [ProducesResponseType(typeof(GeneratedMapperArtifactResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+        [Obsolete("Endereçar por mapperGuid é ambíguo entre projetos (issue #634/#639). Use o catalogId de api/mapping-catalog (GET api/mapping-catalog/items/{catalogId}). Mantido por compatibilidade.")]
         public async Task<IActionResult> GetGeneratedTransformation(Guid workspaceId, string mappingId, CancellationToken cancellationToken)
         {
             var correlationId = HttpContext.TraceIdentifier;

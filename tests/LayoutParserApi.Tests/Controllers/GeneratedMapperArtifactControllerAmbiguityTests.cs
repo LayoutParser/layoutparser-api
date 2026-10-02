@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // a rota por mapperGuid é [Obsolete] de propósito (deprecated no Swagger, issue #639)
 using System.Text.Json;
 
 using LayoutParserApi.Controllers;
@@ -118,6 +119,20 @@ namespace LayoutParserApi.Tests.Controllers
             Assert.IsType<OkObjectResult>(await ctl2.GetGeneratedTransformation(Guid.NewGuid(), "DUP", CancellationToken.None));
             Assert.Equal(1, svc.Calls);
             Assert.Equal(1, svc2.Calls);
+        }
+
+        [Fact]
+        public void Rotas_por_mapperGuid_e_reference_examples_estao_marcadas_deprecated_no_swagger()
+        {
+            // Swashbuckle (sem IgnoreObsoleteActions) publica [Obsolete] como "deprecated: true".
+            static void AssertObsolete(Type controller, string action)
+                => Assert.NotNull(Attribute.GetCustomAttribute(controller.GetMethod(action)!, typeof(ObsoleteAttribute)));
+            AssertObsolete(typeof(GeneratedMapperArtifactController), nameof(GeneratedMapperArtifactController.GetGeneratedTransformation));
+            AssertObsolete(typeof(ReferenceExamplesController), nameof(ReferenceExamplesController.List));
+            AssertObsolete(typeof(ReferenceExamplesController), nameof(ReferenceExamplesController.GetContent));
+            // O catálogo novo NÃO é deprecated.
+            foreach (var m in typeof(MappingCatalogController).GetMethods().Where(m => m.DeclaringType == typeof(MappingCatalogController)))
+                Assert.Null(Attribute.GetCustomAttribute(m, typeof(ObsoleteAttribute)));
         }
     }
 }

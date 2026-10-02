@@ -12,6 +12,11 @@ namespace LayoutParserApi.Controllers
     /// referência estática com governança de release real — ver decisão registrada em
     /// <c>.claude/agent-memory/lp-backend-dev/</c>.
     /// </summary>
+    /// <remarks>
+    /// <b>Superada pelo catálogo unificado</b> (<c>api/mapping-catalog</c>, issues #626/#639): os mesmos pares TCL/XSL da
+    /// Neogrid aparecem lá como origem <c>neogrid</c>, com <c>catalogId</c> estável. As rotas continuam funcionando
+    /// (marcadas deprecated no Swagger) e delegam ao mesmo serviço; a remoção só ocorrerá em versão futura, com aviso.
+    /// </remarks>
     [ApiController]
     [Route("api/reference-examples")]
     public class ReferenceExamplesController : ControllerBase
@@ -32,6 +37,7 @@ namespace LayoutParserApi.Controllers
         /// <param name="cancellationToken">Token de cancelamento.</param>
         /// <response code="200">Lista de exemplos (metadados, sem conteúdo): <c>id</c>, <c>docType</c>, <c>version</c>, <c>scenario</c>, <c>direction</c>, <c>tclFileName</c>, <c>xslFileName</c>. Vazia quando <c>ReferenceExamples:BasePath</c> não está configurado, a pasta não existe ou ocorre erro de leitura.</response>
         [HttpGet]
+        [Obsolete("Superada pelo catálogo unificado (issue #639, design D6): use GET api/mapping-catalog (origem 'neogrid'). Mantida por compatibilidade; delega ao mesmo serviço.")]
         public async Task<IActionResult> List([FromQuery] string? docType, CancellationToken cancellationToken)
         {
             try
@@ -52,6 +58,7 @@ namespace LayoutParserApi.Controllers
         /// <response code="200"><c>{ id, tclContent?, xslContent? }</c> — cada conteúdo é omitido quando o exemplo não tem o arquivo correspondente.</response>
         /// <response code="404">Id não encontrado no corpus (também devolvido se a leitura do arquivo falhar).</response>
         [HttpGet("{id}")]
+        [Obsolete("Superada pelo catálogo unificado (issue #639, design D6): use GET api/mapping-catalog/items/{catalogId}/content. Mantida por compatibilidade; delega ao mesmo serviço.")]
         public async Task<IActionResult> GetContent(string id, CancellationToken cancellationToken)
         {
             try
