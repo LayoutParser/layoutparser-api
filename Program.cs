@@ -599,6 +599,8 @@ try
     // ✅ Issue #631: consultas do catálogo unificado (árvore lida do índice local) + flags de sync por adaptador.
     builder.Services.Configure<LayoutParserApi.Services.Catalog.MappingCatalogOptions>(builder.Configuration.GetSection("MappingCatalog"));
     builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IMappingCatalogService, LayoutParserApi.Services.Catalog.MappingCatalogService>();
+    // Issue #636: o pipeline de TXT resolve o TCL por catalogId (fallback do disco), mesma referência do portal.
+    builder.Services.AddScoped<LayoutParserApi.Services.Catalog.ICatalogTclResolver, LayoutParserApi.Services.Catalog.CatalogTclResolver>();
     // ✅ Issue #632: sync do índice (lock por origem, MERGE, retire só após sync completo). Flags por adaptador
     // em MappingCatalog:Sources:{Origem}:Enabled (default DESLIGADO). O BackgroundService é também o gatilho manual (mesma instância).
     builder.Services.AddScoped<LayoutParserApi.Services.Catalog.IMappingCatalogSyncService, LayoutParserApi.Services.Catalog.MappingCatalogSyncService>();

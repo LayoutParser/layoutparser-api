@@ -166,7 +166,8 @@ namespace LayoutParserApi.Controllers
                     result = await _pipelineService.TransformTxtToXmlAsync(
                         request.InputContent,
                         request.LayoutName,
-                        request.TargetDocumentType ?? "NFe");
+                        request.TargetDocumentType ?? "NFe",
+                        request.CatalogId);
                 }
 
                 if (result.Success)
@@ -1443,7 +1444,8 @@ namespace LayoutParserApi.Controllers
                     : await _pipelineService.TransformTxtToXmlAsync(
                         request.InputContent,
                         request.LayoutName,
-                        request.TargetDocumentType ?? "NFe");
+                        request.TargetDocumentType ?? "NFe",
+                        request.CatalogId);
 
                 if (!pipelineResult.Success || string.IsNullOrEmpty(pipelineResult.TransformedXml))
                 {
