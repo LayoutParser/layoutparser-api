@@ -807,6 +807,9 @@ try
     });
     builder.Services.AddScoped<ICachedMapperService, CachedMapperService>();
 
+    // Storage: resolução ÚNICA dos diretórios de dados (Storage:DataRoot + chaves legadas que vencem)
+    builder.Services.AddSingleton<LayoutParserApi.Services.Storage.StoragePaths>();
+
     // Learning Services
     builder.Services.AddScoped<ExampleLearningService>();
     builder.Services.AddScoped<LayoutLearningService>();

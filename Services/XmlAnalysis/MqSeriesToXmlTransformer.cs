@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using LayoutParserApi.Services.XmlAnalysis.Models;
 
 namespace LayoutParserApi.Services.XmlAnalysis
@@ -15,10 +16,11 @@ namespace LayoutParserApi.Services.XmlAnalysis
         public MqSeriesToXmlTransformer(
             ILogger<MqSeriesToXmlTransformer> logger,
             IConfiguration configuration,
-            TransformationPipelineService pipelineService)
+            TransformationPipelineService pipelineService,
+            StoragePaths? storagePaths = null)
         {
             _logger = logger;
-            _transformationRulesPath = configuration["TransformationRules:Path"] ?? @"C:\inetpub\wwwroot\layoutparser\TransformationRules";
+            _transformationRulesPath = (storagePaths ?? new StoragePaths(configuration)).TransformationRules;
             _pipelineService = pipelineService;
         }
 

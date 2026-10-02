@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 ﻿using LayoutParserApi.Models.Entities;
 using LayoutParserApi.Models.Entities.Fiscal;
 using LayoutParserApi.Models.Enums;
@@ -671,7 +672,7 @@ namespace LayoutParserApi.Controllers
                 _logger.LogInformation("Salvando arquivo para aprendizado: Layout={LayoutName}, Tipo={Type}", layoutName, detectedType);
 
                 // Criar diretório baseado no nome do layout
-                var basePath = _configuration["TransformationPipeline:ExamplesPath"] ?? @"C:\inetpub\wwwroot\layoutparser\Examples";
+                var basePath = new StoragePaths(_configuration).Examples;
 
                 // ✅ P0 — path traversal (WRITE): layoutName vem [FromForm] do cliente e vira nome de
                 // DIRETÓRIO. Sem blindagem, "..\..\algo" escreveria fora da base. Mesmo helper único

@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using LayoutParserApi.Services.XmlAnalysis;
 using LayoutParserApi.Services.Transformation.Models;
 
@@ -19,20 +20,23 @@ namespace LayoutParserApi.Services.Transformation
         private readonly XmlDocumentTypeDetector _documentTypeDetector;
         private readonly XsdValidationService _xsdValidationService;
         private readonly string _expectedOutputsPath;
+        private readonly string _tclBasePath;
 
         public TransformationValidatorService(
             ILogger<TransformationValidatorService> logger,
             IConfiguration configuration,
             TransformationPipelineService pipelineService,
             XmlDocumentTypeDetector documentTypeDetector,
-            XsdValidationService xsdValidationService)
+            XsdValidationService xsdValidationService,
+            StoragePaths? storagePaths = null)
         {
             _logger = logger;
             _configuration = configuration;
             _pipelineService = pipelineService;
             _documentTypeDetector = documentTypeDetector;
             _xsdValidationService = xsdValidationService;
-            _expectedOutputsPath = configuration["TransformationPipeline:ExpectedOutputsPath"] ?? @"C:\inetpub\wwwroot\layoutparser\ExpectedOutputs";
+            _expectedOutputsPath = (storagePaths ?? new StoragePaths(configuration)).ExpectedOutputs;
+            _tclBasePath = (storagePaths ?? new StoragePaths(configuration)).Tcl;
 
             Directory.CreateDirectory(_expectedOutputsPath);
         }
@@ -64,7 +68,7 @@ namespace LayoutParserApi.Services.Transformation
                 // a partir de TclPath base + layoutName), não é digitado livremente pelo chamador — mas
                 // como layoutName chega da requisição, confinamos o caminho ao diretório de TCL configurado
                 // antes de ler o arquivo.
-                if (!string.IsNullOrEmpty(tclPath) && IsWithinBasePath(tclPath, _configuration["TransformationPipeline:TclPath"] ?? @"C:\inetpub\wwwroot\layoutparser\TCL") && File.Exists(tclPath))
+                if (!string.IsNullOrEmpty(tclPath) && IsWithinBasePath(tclPath, _tclBasePath) && File.Exists(tclPath))
                 {
                     var tclValidation = await ValidateTclAsync(tclPath, inputTxt);
                     result.ValidationSteps.Add(new ValidationStep

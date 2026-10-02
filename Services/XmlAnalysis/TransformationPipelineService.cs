@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
@@ -30,13 +31,14 @@ namespace LayoutParserApi.Services.XmlAnalysis
             ILogger<TransformationPipelineService> logger,
             IConfiguration configuration,
             IGeneratedXslResolver? generatedXslResolver = null,
-            ICatalogTclResolver? catalogTclResolver = null)
+            ICatalogTclResolver? catalogTclResolver = null,
+            StoragePaths? storagePaths = null)
         {
             _catalogTclResolver = catalogTclResolver;
             _logger = logger;
             _generatedXslResolver = generatedXslResolver;
-            _tclBasePath = configuration["TransformationPipeline:TclPath"] ?? @"C:\inetpub\wwwroot\layoutparser\TCL";
-            _xslBasePath = configuration["TransformationPipeline:XslPath"] ?? @"C:\inetpub\wwwroot\layoutparser\XSL";
+            _tclBasePath = (storagePaths ?? new StoragePaths(configuration)).Tcl;
+            _xslBasePath = (storagePaths ?? new StoragePaths(configuration)).Xsl;
         }
 
         /// <summary>

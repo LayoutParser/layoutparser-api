@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -61,8 +62,7 @@ namespace LayoutParserApi.Services.Transformation.Ai
             // Sem convenção de prod existente pra esta pasta (diferente de XSD/XSL — ver
             // XsdValidation:BasePath / TransformationPipeline:XslPath); fica configurável e cai,
             // por padrão, na mesma árvore do dataset batch já versionado no repo.
-            _trainingDataPath = configuration["XslSynth:TrainingDataPath"]
-                ?? Path.Combine(AppContext.BaseDirectory, "ai", "XslSynth", "training-data");
+            _trainingDataPath = new StoragePaths(configuration).AiTrainingData;
         }
 
         /// <summary>

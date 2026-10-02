@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -71,8 +72,7 @@ namespace LayoutParserApi.Services.Transformation.LowCode
         {
             _logger = logger;
 
-            _storePath = configuration["ML:LowCodeTransformationsPath"]
-                ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MLData", "LowCodeTransformations");
+            _storePath = new StoragePaths(configuration).LowCodeTransformations;
             Directory.CreateDirectory(_storePath);
             _indexPath = Path.Combine(_storePath, "index");
 

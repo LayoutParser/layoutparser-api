@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
@@ -63,8 +64,7 @@ namespace LayoutParserApi.Services.Fiscal
             _options = options.Value;
             _logger = logger;
             _clock = clock ?? TimeProvider.System;
-            _rootPath = configuration["ML:FiscalAnalysesPath"]
-                ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MLData", "FiscalAnalyses");
+            _rootPath = new StoragePaths(configuration).FiscalAnalyses;
         }
 
         public async Task<Guid?> RegisterAsync(FiscalAnalysisRegistration registration, TimeSpan timeout)

@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
@@ -52,8 +53,7 @@ namespace LayoutParserApi.Services.Fiscal
             _logger = logger;
             _providerResolver = providerResolver;
             _scopeFactory = scopeFactory;
-            _artifactStorePath = configuration["ML:FiscalMappingPackagesPath"]
-                ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MLData", "FiscalMappingPackages");
+            _artifactStorePath = new StoragePaths(configuration).FiscalMappingPackages;
         }
 
         public async Task<Guid> EnqueueAsync(Guid draftId, Guid workspaceId, Guid revisionId, string engine, CancellationToken cancellationToken)

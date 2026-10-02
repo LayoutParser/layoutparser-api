@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
@@ -37,7 +38,8 @@ namespace LayoutParserApi.Controllers
             TransformationLearningService learningService,
             ICachedLayoutService cachedLayoutService,
             TransformationValidatorService validatorService,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            StoragePaths? storagePaths = null)
         {
             _logger = logger;
             _learningService = learningService;
@@ -45,10 +47,8 @@ namespace LayoutParserApi.Controllers
             _validatorService = validatorService;
             _configuration = configuration;
 
-            _tclBasePath = configuration["TransformationPipeline:TclPath"] 
-                ?? @"C:\inetpub\wwwroot\layoutparser\TCL";
-            _xslBasePath = configuration["TransformationPipeline:XslPath"] 
-                ?? @"C:\inetpub\wwwroot\layoutparser\XSL";
+            _tclBasePath = (storagePaths ?? new StoragePaths(configuration)).Tcl;
+            _xslBasePath = (storagePaths ?? new StoragePaths(configuration)).Xsl;
         }
 
         /// <summary>Métricas do modelo de aprendizado (padrões/exemplos/confiança) de TCL e XSL para um layout.</summary>

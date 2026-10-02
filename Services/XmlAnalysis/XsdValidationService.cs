@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using LayoutParserApi.Models.XmlAnalysis;
 using LayoutParserApi.Services.Logging;
 using LayoutParserApi.Services.Security;
@@ -25,14 +26,15 @@ namespace LayoutParserApi.Services.XmlAnalysis
             ILogger<XsdValidationService> logger,
             IConfiguration configuration,
             XmlDocumentTypeDetector documentTypeDetector,
-            PdfOrientationReader pdfOrientationReader)
+            PdfOrientationReader pdfOrientationReader,
+            StoragePaths? storagePaths = null)
         {
             _logger = logger;
             _configuration = configuration;
             _documentTypeDetector = documentTypeDetector;
             _pdfOrientationReader = pdfOrientationReader;
-            _xsdBasePath = configuration["XsdValidation:BasePath"] ?? @"C:\inetpub\wwwroot\layoutparser\xsd";
-            _pdfBasePath = configuration["XsdValidation:PdfBasePath"] ?? @"C:\inetpub\wwwroot\layoutparser\pdf";
+            _xsdBasePath = (storagePaths ?? new StoragePaths(configuration)).Xsd;
+            _pdfBasePath = (storagePaths ?? new StoragePaths(configuration)).Pdf;
         }
 
         /// <summary>

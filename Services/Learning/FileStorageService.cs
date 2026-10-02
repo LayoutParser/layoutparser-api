@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using LayoutParserApi.Models.Learning;
 
 namespace LayoutParserApi.Services.Learning
@@ -10,10 +11,10 @@ namespace LayoutParserApi.Services.Learning
         private readonly ILogger<FileStorageService> _logger;
         private readonly string _basePath;
 
-        public FileStorageService(IConfiguration configuration, ILogger<FileStorageService> logger)
+        public FileStorageService(IConfiguration configuration, ILogger<FileStorageService> logger, StoragePaths? storagePaths = null)
         {
             _logger = logger;
-            _basePath = configuration["TransformationPipeline:ExamplesPath"] ?? @"C:\inetpub\wwwroot\layoutparser\Examples";
+            _basePath = (storagePaths ?? new StoragePaths(configuration)).Examples;
 
             // Garantir que o diretório base existe
             if (!Directory.Exists(_basePath))

@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using LayoutParserApi.Models.Configuration;
 using LayoutParserApi.Models.ML;
 using LayoutParserApi.Models.Validation;
@@ -32,8 +33,8 @@ namespace LayoutParserApi.Services.Validation
             _logger = logger;
             // ✅ Dependência opcional: sem o detector registrado, o serviço segue funcionando normalmente
             _anomalyDetector = anomalyDetector;
-            _learningDataPath = configuration["ML:LearningDataPath"] ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MLData", "DocumentPatterns");
-            _trainingSamplesPath = configuration["ML:TrainingSamplesPath"] ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MLData", "TrainingSamples");
+            _learningDataPath = new StoragePaths(configuration).LearningData;
+            _trainingSamplesPath = new StoragePaths(configuration).TrainingSamples;
 
             // ✅ Resiliência: sem permissão de escrita (ex.: serviço Linux sem acesso ao diretório da app),
             // o serviço degrada (sem persistir aprendizado) em vez de derrubar o request principal.

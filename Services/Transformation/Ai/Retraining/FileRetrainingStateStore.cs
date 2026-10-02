@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 
@@ -46,8 +47,7 @@ namespace LayoutParserApi.Services.Transformation.Ai.Retraining
         {
             _logger = logger;
 
-            var trainingDataPath = configuration["XslSynth:TrainingDataPath"]
-                ?? Path.Combine(AppContext.BaseDirectory, "ai", "XslSynth", "training-data");
+            var trainingDataPath = new StoragePaths(configuration).AiTrainingData;
 
             _stateFilePath = !string.IsNullOrWhiteSpace(options.Value.StateFilePath)
                 ? options.Value.StateFilePath!

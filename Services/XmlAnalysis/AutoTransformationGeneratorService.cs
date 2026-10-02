@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using LayoutParserApi.Models.Database;
 using LayoutParserApi.Models.Entities;
 using LayoutParserApi.Services.Database;
@@ -40,7 +41,8 @@ namespace LayoutParserApi.Services.XmlAnalysis
             ICachedLayoutService cachedLayoutService,
             MapperDatabaseService mapperDatabaseService,
             TransformationLearningService learningService,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            StoragePaths? storagePaths = null)
         {
             _logger = logger;
             _tclGenerator = tclGenerator;
@@ -51,8 +53,8 @@ namespace LayoutParserApi.Services.XmlAnalysis
             _mapperDatabaseService = mapperDatabaseService;
             _learningService = learningService;
 
-            _tclBasePath = configuration["TransformationPipeline:TclPath"] ?? @"C:\inetpub\wwwroot\layoutparser\TCL";
-            _xslBasePath = configuration["TransformationPipeline:XslPath"] ?? @"C:\inetpub\wwwroot\layoutparser\XSL";
+            _tclBasePath = (storagePaths ?? new StoragePaths(configuration)).Tcl;
+            _xslBasePath = (storagePaths ?? new StoragePaths(configuration)).Xsl;
 
             // Garantir que os diretórios existam
             Directory.CreateDirectory(_tclBasePath);
