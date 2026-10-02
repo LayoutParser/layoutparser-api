@@ -1,6 +1,7 @@
 using LayoutParserApi.Services.Database;
 using LayoutParserApi.Services.Interfaces;
 using LayoutParserApi.Services.Logging;
+using LayoutParserApi.Services.Transformation.Ai;
 using LayoutParserApi.Services.Transformation.LowCode;
 
 using Microsoft.Extensions.Options;
@@ -22,19 +23,24 @@ namespace LayoutParserApi.Services.XmlAnalysis
     }
 
     /// <summary>
-    /// Só aceita status <c>ready</c>. <c>stale</c> NÃO é persistido (é calculado em leitura comparando o hash
-    /// do MapperVo) e aqui não há esse hash; um XSL de mapper desatualizado produziria dado fiscal errado,
-    /// então a decisão é recusar (generating/failed/ausente idem) e deixar o gatilho de criação agir.
+    /// Só aceita status <c>ready</c> E hash atual do MapperVo igual ao persistido. <c>stale</c> NÃO é persistido
+    /// (é calculado em leitura); aqui é recalculado com <c>ComputeMapperVoHash</c> do serviço de geração (inclui
+    /// GeneratorVersion). Hash divergente ou não calculável => recusa (fail-closed: XSL de mapper desatualizado
+    /// produziria dado fiscal errado) e dispara o gatilho de criação/regeneração. generating/failed/ausente idem.
     /// </summary>
     public class GeneratedXslResolver : IGeneratedXslResolver
     {
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<GeneratedXslResolver> _logger;
 
-        public GeneratedXslResolver(IServiceScopeFactory scopeFactory, ILogger<GeneratedXslResolver> logger)
+        private readonly IMissingMapperGenerationTrigger? _trigger;
+
+        public GeneratedXslResolver(IServiceScopeFactory scopeFactory, ILogger<GeneratedXslResolver> logger,
+            IMissingMapperGenerationTrigger? trigger = null)
         {
             _scopeFactory = scopeFactory;
             _logger = logger;
+            _trigger = trigger;
         }
 
         public async Task<string?> ResolveReadyXslAsync(string layoutName, CancellationToken cancellationToken = default)
@@ -46,6 +52,7 @@ namespace LayoutParserApi.Services.XmlAnalysis
 
                 var mapperGuid = await ResolveMapperGuidAsync(layoutName);
                 if (string.IsNullOrWhiteSpace(mapperGuid)) return null;
+                var decrypted = await ResolveMapperContentAsync(mapperGuid);
 
                 using var scope = _scopeFactory.CreateScope();
                 var store = scope.ServiceProvider.GetService<IGeneratedMapperArtifactStore>();
@@ -59,6 +66,22 @@ namespace LayoutParserApi.Services.XmlAnalysis
                         safeLayout, LogMessageSanitizer.Sanitize(mapperGuid), record?.Status ?? "none");
                     return null;
                 }
+
+                // Stale: hash atual do MapperVo diverge do persistido (mapper editado ou GeneratorVersion nova).
+                var currentHash = ComputeCurrentHash(decrypted);
+                if (currentHash is null)
+                {
+                    _logger.LogWarning("Hash atual do MapperVo não calculável para o layout {LayoutName} (mapper {MapperGuid}); recusando artefato por segurança fiscal.",
+                        safeLayout, LogMessageSanitizer.Sanitize(mapperGuid));
+                    return null;
+                }
+                if (!string.Equals(record.MapperVoHash, currentHash, StringComparison.Ordinal))
+                {
+                    _logger.LogWarning("Artefato Ready STALE para o layout {LayoutName} (mapper {MapperGuid}): hash do MapperVo divergente; recusado e regeneração disparada.",
+                        safeLayout, LogMessageSanitizer.Sanitize(mapperGuid));
+                    _trigger?.TriggerForLayout(layoutName, "stale_artifact");
+                    return null;
+                }
                 return record.Content;
             }
             catch (Exception ex)
@@ -68,6 +91,18 @@ namespace LayoutParserApi.Services.XmlAnalysis
                 return null;
             }
         }
+
+        /// <summary>Conteúdo decifrado do mapper escolhido (mesma seleção de <see cref="ResolveMapperGuidAsync"/>). Virtual p/ teste.</summary>
+        protected virtual async Task<string?> ResolveMapperContentAsync(string mapperGuid)
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var mappers = await scope.ServiceProvider.GetRequiredService<ICachedMapperService>().GetAllMappersAsync();
+            return mappers.FirstOrDefault(m => string.Equals(m.MapperGuid, mapperGuid, StringComparison.OrdinalIgnoreCase))?.DecryptedContent;
+        }
+
+        /// <summary>Reaproveita o hash do serviço de geração (não duplica). Virtual p/ teste.</summary>
+        protected virtual string? ComputeCurrentHash(string? decryptedContent)
+            => Transformation.Ai.GeneratedMapperArtifactService.TryComputeMapperVoHash(decryptedContent);
 
         /// <summary>Mesma seleção do gatilho (#642): 1º mapper ranqueado com conteúdo decifrável. Virtual p/ teste.</summary>
         protected virtual async Task<string?> ResolveMapperGuidAsync(string layoutName)

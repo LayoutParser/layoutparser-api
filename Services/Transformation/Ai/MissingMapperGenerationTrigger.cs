@@ -27,6 +27,13 @@ namespace LayoutParserApi.Services.Transformation.Ai
         /// <summary>Janela mínima entre dois disparos para o MESMO layout (idempotência barata, em memória).</summary>
         public static readonly TimeSpan Cooldown = TimeSpan.FromMinutes(30);
         private const int MaxTrackedLayouts = 2000;
+        /// <summary>Default conservador do cap global (config <c>Ai:MissingMapperTrigger:MaxPerMinute</c>).</summary>
+        public const int DefaultMaxPerMinute = 10;
+
+        private readonly int _maxPerMinute;
+        private readonly object _capLock = new();
+        private readonly Queue<DateTime> _recentTriggers = new();
+        private int _droppedSinceLog;
 
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<MissingMapperGenerationTrigger> _logger;
@@ -36,8 +43,11 @@ namespace LayoutParserApi.Services.Transformation.Ai
         public MissingMapperGenerationTrigger(
             IServiceScopeFactory scopeFactory,
             ILogger<MissingMapperGenerationTrigger> logger,
-            Func<DateTime>? utcNow = null)
+            Func<DateTime>? utcNow = null,
+            IConfiguration? configuration = null)
         {
+            var cfg = configuration?.GetValue<int?>("Ai:MissingMapperTrigger:MaxPerMinute");
+            _maxPerMinute = cfg is > 0 ? cfg.Value : DefaultMaxPerMinute;
             _scopeFactory = scopeFactory;
             _logger = logger;
             _utcNow = utcNow ?? (() => DateTime.UtcNow);
@@ -47,7 +57,9 @@ namespace LayoutParserApi.Services.Transformation.Ai
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(layoutName) || !ShouldTrigger(layoutName))
+                if (string.IsNullOrWhiteSpace(layoutName)) return;
+                layoutName = layoutName.Trim();
+                if (!ShouldTrigger(layoutName) || !TryAcquireGlobalSlot())
                     return;
 
                 var safeLayout = Logging.LogMessageSanitizer.Sanitize(layoutName);
@@ -64,6 +76,27 @@ namespace LayoutParserApi.Services.Transformation.Ai
             }
         }
 
+        /// <summary>Cap global por janela de 1 min; excedentes são descartados (log limitado).</summary>
+        private bool TryAcquireGlobalSlot()
+        {
+            var now = _utcNow();
+            lock (_capLock)
+            {
+                while (_recentTriggers.Count > 0 && now - _recentTriggers.Peek() >= TimeSpan.FromMinutes(1))
+                    _recentTriggers.Dequeue();
+                if (_recentTriggers.Count >= _maxPerMinute)
+                {
+                    if (++_droppedSinceLog == 1 || _droppedSinceLog % 100 == 0)
+                        _logger.LogWarning("Cap global de criação automática atingido ({Max}/min): disparo descartado ({Dropped} descartados desde o último aviso).",
+                            _maxPerMinute, _droppedSinceLog);
+                    return false;
+                }
+                _recentTriggers.Enqueue(now);
+                _droppedSinceLog = 0;
+                return true;
+            }
+        }
+
         /// <summary>true = este chamador "venceu" a janela de cooldown do layout (e a reivindicou).</summary>
         private bool ShouldTrigger(string layoutName)
         {
@@ -72,6 +105,11 @@ namespace LayoutParserApi.Services.Transformation.Ai
             {
                 foreach (var kv in _lastTriggerUtc.Where(kv => now - kv.Value > Cooldown).ToList())
                     _lastTriggerUtc.TryRemove(kv.Key, out _);
+                // Ainda acima do teto: descarta os mais antigos (memória limitada).
+                var excess = _lastTriggerUtc.Count - MaxTrackedLayouts;
+                if (excess > 0)
+                    foreach (var kv in _lastTriggerUtc.OrderBy(kv => kv.Value).Take(excess).ToList())
+                        _lastTriggerUtc.TryRemove(kv.Key, out _);
             }
 
             var claimed = false;

@@ -338,8 +338,9 @@ namespace LayoutParserApi.Services.Transformation.Ai
             return (publish.CandidatoPublicavel.ToString(), JsonSerializer.Serialize(coverageDto, JsonOpts));
         }
 
-        private static bool IsValidXmlName(string name)
+        public static bool IsValidXmlName(string name)
         {
+            if (string.IsNullOrEmpty(name)) return false;
             try { System.Xml.XmlConvert.VerifyNCName(name); return true; }
             catch (System.Xml.XmlException) { return false; }
         }
@@ -462,6 +463,28 @@ namespace LayoutParserApi.Services.Transformation.Ai
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "MapeadorVO do mapper {MapperGuid} não é XML bem-formado", Services.Logging.LogMessageSanitizer.Sanitize(mapperGuid));
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Hash atual do MapperVo a partir do conteúdo decifrado, pelo MESMO caminho de parse/hash do
+        /// <see cref="GetOrTriggerAsync"/> (usado pelo resolver do pipeline para recusar artefato stale,
+        /// issue #642). <c>null</c> = conteúdo vazio ou XML inválido (não calculável).
+        /// </summary>
+        public static string? TryComputeMapperVoHash(string? decryptedContent)
+        {
+            if (string.IsNullOrWhiteSpace(decryptedContent)) return null;
+            try
+            {
+                var doc = XDocument.Parse(decryptedContent);
+                MapperVo vo;
+                try { vo = new RealMapperParser().Parse(doc); }
+                catch { vo = new MapperExtractor().Extract(doc); }
+                return ComputeMapperVoHash(vo);
+            }
+            catch
+            {
                 return null;
             }
         }

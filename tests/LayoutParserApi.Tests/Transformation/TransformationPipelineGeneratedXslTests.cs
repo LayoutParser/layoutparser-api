@@ -46,6 +46,26 @@ namespace LayoutParserApi.Tests.Transformation
             Assert.Contains("DoArtefato", res.TransformedXml);
         }
 
+        [Theory]
+        [InlineData("<xsl:template match=\"/\"><r><xsl:value-of select=\"document('file:///etc/hostname')\"/></r></xsl:template>")]
+        [InlineData("<xsl:template match=\"/\"><r><xsl:value-of select=\"msxsl:foo()\"/></r></xsl:template><msxsl:script language=\"C#\" implements-prefix=\"u\">x</msxsl:script>")]
+        public async Task XmlParaXml_ArtefatoComDocumentOuScript_Falha(string body)
+        {
+            using var d = new Dirs();
+            var xsl = "<xsl:stylesheet version=\"1.0\" xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\" xmlns:msxsl=\"urn:schemas-microsoft-com:xslt\" xmlns:u=\"urn:u\">" + body + "</xsl:stylesheet>";
+            var res = await d.Make(new FakeResolver { Content = xsl }).TransformXmlToXmlAsync("<a/>", "NFe", "NFe", Layout);
+            Assert.False(res.Success);
+        }
+
+        [Fact]
+        public async Task XmlParaXml_ArtefatoComDtd_Falha()
+        {
+            using var d = new Dirs();
+            var xsl = "<!DOCTYPE xsl:stylesheet [<!ENTITY x SYSTEM \"file:///etc/hostname\">]>" + string.Format(Xsl, "R");
+            var res = await d.Make(new FakeResolver { Content = xsl }).TransformXmlToXmlAsync("<a/>", "NFe", "NFe", Layout);
+            Assert.False(res.Success);
+        }
+
         [Fact]
         public async Task XmlParaXml_DiscoPresente_PriorizaDisco()
         {
@@ -113,18 +133,21 @@ namespace LayoutParserApi.Tests.Transformation
         private sealed class TestResolver : GeneratedXslResolver
         {
             public string? Guid = "g1";
-            public TestResolver(IServiceScopeFactory f) : base(f, NullLogger<GeneratedXslResolver>.Instance) { }
+            public TestResolver(IServiceScopeFactory f, LayoutParserApi.Services.Transformation.Ai.IMissingMapperGenerationTrigger? t = null) : base(f, NullLogger<GeneratedXslResolver>.Instance, t) { }
+            public string? CurrentHash = "H1";
             protected override Task<string?> ResolveMapperGuidAsync(string layoutName) => Task.FromResult(Guid);
+            protected override Task<string?> ResolveMapperContentAsync(string mapperGuid) => Task.FromResult<string?>("<x/>");
+            protected override string? ComputeCurrentHash(string? c) => CurrentHash;
         }
 
-        private static TestResolver MakeResolver(Store s)
+        private static TestResolver MakeResolver(Store s, string? currentHash = "H1")
         {
             var sp = new ServiceCollection().AddSingleton<IGeneratedMapperArtifactStore>(s).BuildServiceProvider();
-            return new TestResolver(sp.GetRequiredService<IServiceScopeFactory>());
+            return new TestResolver(sp.GetRequiredService<IServiceScopeFactory>()) { CurrentHash = currentHash };
         }
 
         private static GeneratedMapperArtifactRecord Rec(string status, string? content) =>
-            new("g1", status, content, null, null, null, null, null, DateTimeOffset.UtcNow);
+            new("g1", status, content, null, null, "H1", null, null, DateTimeOffset.UtcNow);
 
         [Fact]
         public async Task Resolver_Ready_DevolveContent()
@@ -136,6 +159,30 @@ namespace LayoutParserApi.Tests.Transformation
         [InlineData("failed")]
         public async Task Resolver_NaoReady_Null(string status)
             => Assert.Null(await MakeResolver(new Store { Rec = Rec(status, "<x/>") }).ResolveReadyXslAsync(Layout));
+
+        [Fact]
+        public async Task Resolver_ReadyMasHashDivergente_Stale_Recusa()
+            => Assert.Null(await MakeResolver(new Store { Rec = Rec("ready", "<x/>") }, "OUTRO").ResolveReadyXslAsync(Layout));
+
+        [Fact]
+        public async Task Resolver_ReadyMasHashNaoCalculavel_Recusa()
+            => Assert.Null(await MakeResolver(new Store { Rec = Rec("ready", "<x/>") }, null).ResolveReadyXslAsync(Layout));
+
+        [Fact]
+        public async Task Resolver_Stale_DisparaGatilho()
+        {
+            var sp = new ServiceCollection().AddSingleton<IGeneratedMapperArtifactStore>(new Store { Rec = Rec("ready", "<x/>") }).BuildServiceProvider();
+            var trig = new CountingTrigger();
+            var r = new TestResolver(sp.GetRequiredService<IServiceScopeFactory>(), trig) { CurrentHash = "OUTRO" };
+            Assert.Null(await r.ResolveReadyXslAsync(Layout));
+            Assert.Equal(1, trig.Count);
+        }
+
+        private sealed class CountingTrigger : LayoutParserApi.Services.Transformation.Ai.IMissingMapperGenerationTrigger
+        {
+            public int Count;
+            public void TriggerForLayout(string? l, string? e) => Count++;
+        }
 
         [Fact]
         public async Task Resolver_SemRegistro_Null()
