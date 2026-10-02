@@ -21,7 +21,8 @@ namespace LayoutParserApi.Services.Interfaces
 
     /// <summary>
     /// Linha persistida de <c>dbo.tbGeneratedMapperArtifact</c> — um candidato TCL/XSL/XSLT por
-    /// <c>MapperGuid</c> (chave). <see cref="Status"/> guarda só os estados de escrita
+    /// <c>(MapperGuid, ProjectId)</c> (issue #635: <see cref="ProjectId"/> nulo = linha legada, anterior à
+    /// migração; <c>mapperGuid</c> sozinho NÃO é único entre projetos). <see cref="Status"/> guarda só os estados de escrita
     /// (<c>none</c> nunca é persistido — ausência de linha já significa "none"; <c>stale</c> também
     /// não é persistido — é calculado em leitura comparando <see cref="MapperVoHash"/> com o hash
     /// atual do mapper, ver <see cref="Transformation.Ai.IGeneratedMapperArtifactService"/>).
@@ -35,7 +36,8 @@ namespace LayoutParserApi.Services.Interfaces
         string? MapperVoHash,
         string? CorrelationId,
         DateTimeOffset? GeneratedAt,
-        DateTimeOffset UpdatedAt);
+        DateTimeOffset UpdatedAt,
+        string? ProjectId = null);
 
     /// <summary>
     /// Acesso a dado do candidato gerado automaticamente (issue #438). Mesmo padrão ADO.NET cru de
@@ -45,6 +47,36 @@ namespace LayoutParserApi.Services.Interfaces
     public interface IGeneratedMapperArtifactStore
     {
         Task<GeneratedMapperArtifactRecord?> GetAsync(string mapperGuid, CancellationToken cancellationToken);
+
+        // ── Issue #635: overloads com ProjectId ────────────────────────────────────────────────
+        // Implementações default (retrocompatíveis): quem não conhece projeto (fakes antigos, outros
+        // armazenamentos) cai no comportamento por MapperGuid. O store SQL sobrescreve todas.
+
+        /// <summary>
+        /// Lê por <c>(MapperGuid, ProjectId)</c>. <paramref name="projectId"/> nulo = linha legada. Com
+        /// projeto informado e sem linha exata, o store SQL cai na linha legada (ProjectId nulo) do mesmo
+        /// <c>MapperGuid</c> — o hash do <c>MapperVo</c> continua sendo o guarda contra conteúdo de outro projeto.
+        /// </summary>
+        Task<GeneratedMapperArtifactRecord?> GetAsync(string mapperGuid, string? projectId, CancellationToken cancellationToken)
+            => GetAsync(mapperGuid, cancellationToken);
+
+        /// <summary>Todas as linhas de um <c>MapperGuid</c> (todos os projetos) — base da desambiguação (issue #634).</summary>
+        async Task<IReadOnlyList<GeneratedMapperArtifactRecord>> ListByMapperGuidAsync(string mapperGuid, CancellationToken cancellationToken)
+        {
+            var one = await GetAsync(mapperGuid, cancellationToken);
+            return one is null ? Array.Empty<GeneratedMapperArtifactRecord>() : [one];
+        }
+
+        Task<bool> TryBeginGeneratingAsync(string mapperGuid, string? projectId, string correlationId, CancellationToken cancellationToken)
+            => TryBeginGeneratingAsync(mapperGuid, correlationId, cancellationToken);
+
+        Task CompleteAsync(
+            string mapperGuid, string? projectId, string content, string coverageJson, string validationBasis,
+            string mapperVoHash, string correlationId, CancellationToken cancellationToken)
+            => CompleteAsync(mapperGuid, content, coverageJson, validationBasis, mapperVoHash, correlationId, cancellationToken);
+
+        Task FailAsync(string mapperGuid, string? projectId, CancellationToken cancellationToken)
+            => FailAsync(mapperGuid, cancellationToken);
 
         /// <summary>
         /// Listagem paginada por offset (unificação com <c>mapping-releases</c>, issue #438, ADR
