@@ -41,9 +41,9 @@ namespace LayoutParserApi.Services.Transformation.Ai
         /// o que o gerador produz para o MESMO mapeador (ex.: casca do documento, issue #438), suba esta
         /// constante — todo artefato já persistido vira <c>stale</c> na próxima leitura e é regenerado
         /// sob demanda, sem reescrever nem apagar nada na tabela. Histórico: "1" = original (sem versão
-        /// no hash); "2" = casca do documento (atributos/namespace/limitações) + Concat/Substring do DSL.
+        /// no hash); "2" = casca do documento (atributos/namespace/limitações) + Concat/Substring do DSL; "3" = nonReproducibleRules no coverageJson (#642).
         /// </summary>
-        public const string GeneratorVersion = "2";
+        public const string GeneratorVersion = "3";
 
         private readonly ICachedMapperService _mapperService;
         private readonly IGeneratedMapperArtifactStore _store;
@@ -261,6 +261,13 @@ namespace LayoutParserApi.Services.Transformation.Ai
 
             var heuristicRoot = DetermineRoot(mapper);
             var catalogRoot = DocumentShellOptions.SingleRoot(targetCatalog);
+            // Issue #642: raiz inferida que não é nome XML válido (ex.: começa com dígito) derrubava o
+            // CandidateBuilder (XmlException) a cada rodada do sweep — agora é descartada e declarada.
+            if (heuristicRoot is not null && !IsValidXmlName(heuristicRoot))
+            {
+                limitations.Add($"Raiz inferida das regras ('{heuristicRoot}') não é um nome XML válido: descartada.");
+                heuristicRoot = null;
+            }
             string rootName;
             if (heuristicRoot is not null)
             {
@@ -294,9 +301,21 @@ namespace LayoutParserApi.Services.Transformation.Ai
             var coverage = new CoverageValidator().Validate(candidate, mapper);
             var publish = ProvenancePublisher.Publish(mapper, targetCatalog: null, translations, candidate);
 
+            // Issue #642: regras que NÃO conseguimos recriar em XSLT (vivem em código/DSL não coberta).
+            // Vão no coverageJson e em log Warning para o time saber o que precisa de tratamento manual.
+            var nonReproducible = ClassifyNonReproducibleRules(translations);
+            if (nonReproducible.Count > 0)
+            {
+                logger.LogWarning(
+                    "Mapper {MapperGuid}: {Count} regra(s) NÃO reproduzíveis em XSLT automaticamente (exigem tratamento manual): {Regras}",
+                    safeMapperGuid, nonReproducible.Count,
+                    string.Join(", ", nonReproducible.Take(20).Select(r => $"{Services.Logging.LogMessageSanitizer.Sanitize(r.Rule)}({r.Reason})")));
+            }
+
             var coverageDto = new
             {
                 generatorVersion = GeneratorVersion,
+                nonReproducibleRules = nonReproducible,
                 shell = stats.Shell is null ? null : new
                 {
                     rootElement = stats.Shell.RootElement,
@@ -318,6 +337,28 @@ namespace LayoutParserApi.Services.Transformation.Ai
 
             return (publish.CandidatoPublicavel.ToString(), JsonSerializer.Serialize(coverageDto, JsonOpts));
         }
+
+        private static bool IsValidXmlName(string name)
+        {
+            try { System.Xml.XmlConvert.VerifyNCName(name); return true; }
+            catch (System.Xml.XmlException) { return false; }
+        }
+
+        /// <summary>Regra que o gerador não reproduziu (ou só aproximou) em XSLT — alerta para revisão manual.</summary>
+        public sealed record NonReproducibleRule(string Rule, string? TargetPath, string Reason);
+
+        /// <summary>
+        /// <c>untranslated</c> = nenhuma camada (interpretador, Ollama, fallback) produziu XSLT: a regra
+        /// virou só um comentário no candidato. <c>approximate</c> = só o fallback de 1 saída cobriu
+        /// (pode perder ramos/funções) — precisa de revisão humana. Não inclui conteúdo de DSL nem de documento.
+        /// </summary>
+        public static IReadOnlyList<NonReproducibleRule> ClassifyNonReproducibleRules(IEnumerable<RuleTranslation> translations)
+            => translations
+                .Where(t => t.Source is TranslationSource.Untranslated or TranslationSource.MockFallback)
+                .Select(t => new NonReproducibleRule(
+                    t.Rule.Name, t.TargetPath,
+                    t.Source == TranslationSource.Untranslated ? "untranslated" : "approximate"))
+                .ToList();
 
         /// <summary>
         /// Carrega o layout de DESTINO como catálogo GUID→XPath (mesma fonte de <c>LayoutTreeService</c>).

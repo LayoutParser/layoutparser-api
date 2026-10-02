@@ -62,6 +62,7 @@ namespace LayoutParserApi.Controllers
         private readonly IFieldCorrectionStore _fieldCorrectionStore;
         private readonly TrainingDataCaptureService _trainingDataCapture;
         private readonly Services.Interfaces.IIdentityWorkspaceService? _identityWorkspaces;
+        private readonly IMissingMapperGenerationTrigger? _missingMapperTrigger;
 
         public TransformationExecutionController(
             ILogger<TransformationExecutionController> logger,
@@ -85,9 +86,11 @@ namespace LayoutParserApi.Controllers
             Services.Security.ICanaryAlertService canaryAlert,
             IFieldCorrectionStore fieldCorrectionStore,
             TrainingDataCaptureService trainingDataCapture,
-            Services.Interfaces.IIdentityWorkspaceService? identityWorkspaces = null)
+            Services.Interfaces.IIdentityWorkspaceService? identityWorkspaces = null,
+            IMissingMapperGenerationTrigger? missingMapperTrigger = null)
         {
             _identityWorkspaces = identityWorkspaces;
+            _missingMapperTrigger = missingMapperTrigger;
             _logger = logger;
             _pipelineService = pipelineService;
             _validatorService = validatorService;
@@ -196,6 +199,9 @@ namespace LayoutParserApi.Controllers
                 }
                 else
                 {
+                    // Issue #642: mesmo gatilho no endpoint execute (só para os códigos de mapeador ausente).
+                    if (result.ErrorCode is "map_not_found" or "xsl_not_found")
+                        _missingMapperTrigger?.TriggerForLayout(request.LayoutName, result.ErrorCode);
                     return BadRequest(new
                     {
                         success = false,
@@ -1453,6 +1459,9 @@ namespace LayoutParserApi.Controllers
                         "xsl_not_found" => "xsl_not_found",
                         _ => "map_not_found" // fallback conservador: maioria dos casos "não aplicável" hoje é ausência de MAP
                     };
+                    // Issue #642: mapeador ausente → dispara a criação automática em background
+                    // (fire-and-forget, com cooldown por layout; nunca altera o código de erro nem a resposta).
+                    _missingMapperTrigger?.TriggerForLayout(request.LayoutName, code);
                     _logger.LogWarning(
                         "PathwayDiagnostic {CorrelationId}: pathway={Pathway} status={Status} code={Code} layout={LayoutName} fonte=TransformationPipelineService.ErrorCode={ErrorCode}",
                         Services.Logging.CorrelationContext.CurrentId, "tcl-xsl", "failed", code, safeLayoutName, pipelineResult.ErrorCode);
