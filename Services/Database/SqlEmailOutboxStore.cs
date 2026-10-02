@@ -108,7 +108,7 @@ namespace LayoutParserApi.Services.Database
             using var cmd = new SqlCommand(
                 $@"SELECT EmailId, ToEmail, Template, {StatusNormalizado}, Attempts, CreatedAt, NextAttemptAt, SentAt, LastError
                    FROM dbo.tbLpEmailOutbox
-                   WHERE DedupeKey = @Key AND (@To IS NULL OR ToEmail = @To)
+                   WHERE (DedupeKey = @Key OR DedupeKey LIKE @Key + ':resend:%') AND (@To IS NULL OR ToEmail = @To)
                    ORDER BY CreatedAt DESC
                    OFFSET @Skip ROWS FETCH NEXT @Take ROWS ONLY;", c);
             cmd.Parameters.AddWithValue("@Key", dedupeKey);
@@ -130,7 +130,7 @@ namespace LayoutParserApi.Services.Database
             using var cmd = new SqlCommand(
                 $@"SELECT ToEmail, {StatusNormalizado} FROM (
                      SELECT ToEmail, Status, ROW_NUMBER() OVER (PARTITION BY ToEmail ORDER BY CreatedAt DESC) rn
-                     FROM dbo.tbLpEmailOutbox WHERE DedupeKey = @Key) t WHERE rn = 1;", c);
+                     FROM dbo.tbLpEmailOutbox WHERE DedupeKey = @Key OR DedupeKey LIKE @Key + ':resend:%') t WHERE rn = 1;", c);
             cmd.Parameters.AddWithValue("@Key", dedupeKey);
             var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             using var r = await cmd.ExecuteReaderAsync(ct);

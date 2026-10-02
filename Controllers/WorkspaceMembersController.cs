@@ -126,6 +126,73 @@ namespace LayoutParserApi.Controllers
                 Outcome(await _members.RemoveAsync(workspaceId, userId, cancellationToken), noContentOnOk: true));
         }
 
+        /// <summary>
+        /// Reenvia o e-mail de convite (template <c>welcome-v1</c>) a um convite PENDENTE do workspace.
+        /// O destinatário é sempre o e-mail do convite identificado por <paramref name="memberId"/> (o mesmo
+        /// <c>userId</c> devolvido na listagem) — nunca um e-mail arbitrário.
+        /// Respostas: 202 <c>{ emailId, status, enqueued, smtpConfigured, nextResendAvailableAt }</c>
+        /// (<c>smtpConfigured=false</c> = enfileirado para rastreio, mas NÃO será enviado até configurar o SMTP);
+        /// 404 membro/convite inexistente neste workspace; 409 <c>member_already_active</c>;
+        /// 429 <c>resend_cooldown</c> (com <c>Retry-After</c>) ou <c>daily_limit</c>; 503 SQL indisponível.
+        /// </summary>
+        [HttpPost("{memberId:guid}/resend-invite")]
+        [ServiceFilter(typeof(AuditActionFilter))]
+        public async Task<IActionResult> ResendInvite(Guid workspaceId, Guid memberId, CancellationToken cancellationToken)
+        {
+            return await Guarded(workspaceId, cancellationToken, async workspace =>
+            {
+                var member = (await _members.ListAsync(workspaceId, cancellationToken)).FirstOrDefault(m => m.UserId == memberId);
+                if (member == null || string.IsNullOrEmpty(member.Email))
+                    return NotFound(new { error = "Membro não encontrado." });
+
+                if (!string.Equals(member.Status, "pending", StringComparison.Ordinal))
+                    return Conflict(new { code = "member_already_active", error = "Este membro já está ativo no workspace; não há convite a reenviar." });
+
+                var key = workspaceId.ToString("N");
+                var cooldown = TimeSpan.FromMinutes(Math.Max(1, _emailOptions.ResendCooldownMinutes));
+                var now = DateTime.UtcNow;
+
+                var ultimo = (await _outbox.ListAsync(key, member.Email, 0, 1, cancellationToken)).FirstOrDefault();
+                if (ultimo != null)
+                {
+                    var liberaEm = DateTime.SpecifyKind(ultimo.CreatedAt, DateTimeKind.Utc) + cooldown;
+                    if (liberaEm > now)
+                    {
+                        var segundos = (int)Math.Ceiling((liberaEm - now).TotalSeconds);
+                        Response.Headers["Retry-After"] = segundos.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        return StatusCode(StatusCodes.Status429TooManyRequests, new
+                        {
+                            code = "resend_cooldown",
+                            error = $"Aguarde antes de reenviar o convite para este e-mail ({segundos}s).",
+                            nextResendAvailableAt = new DateTimeOffset(liberaEm)
+                        });
+                    }
+                }
+
+                var enviadosHoje = await _outbox.CountSentLast24hAsync(cancellationToken);
+                if (enviadosHoje >= _emailOptions.DailyLimit)
+                    return StatusCode(StatusCodes.Status429TooManyRequests, new { code = "daily_limit", error = "Teto diário de e-mails atingido; tente novamente mais tarde." });
+
+                // Chave nova por janela de cooldown: não é engolida pelo dedupe de 24h do convite original,
+                // mas dois cliques dentro da mesma janela caem na mesma chave (idempotência).
+                var bucket = (long)(now - DateTime.UnixEpoch).TotalSeconds / (long)cooldown.TotalSeconds;
+                var dedupeKey = $"{key}:resend:{bucket}";
+                var (subject, body) = WelcomeEmailTemplate.Render(workspace.Name, _emailOptions.PortalUrl);
+                var r = await _outbox.EnqueueAsync(member.Email, WelcomeEmailTemplate.Name, dedupeKey, subject, body, cancellationToken);
+                _logger.LogInformation("Reenvio de convite: e-mail {EmailId} (Enfileirado={Enqueued}, Template={Template}, WorkspaceId={WorkspaceId}, Destinatario={Destinatario}, SmtpConfigured={SmtpConfigured})",
+                    r.EmailId, r.Enqueued, WelcomeEmailTemplate.Name, workspaceId, EmailMasking.Mask(member.Email), _emailSender.IsConfigured);
+
+                return StatusCode(StatusCodes.Status202Accepted, new
+                {
+                    emailId = r.EmailId,
+                    status = "pending",
+                    enqueued = r.Enqueued,
+                    smtpConfigured = _emailSender.IsConfigured,
+                    nextResendAvailableAt = new DateTimeOffset(now + cooldown)
+                });
+            });
+        }
+
         /// <summary>Boas-vindas best-effort: qualquer falha aqui NUNCA desfaz o vínculo já gravado.</summary>
         private async Task TryEnqueueWelcomeAsync(WorkspaceSummary workspace, string email, CancellationToken cancellationToken)
         {
