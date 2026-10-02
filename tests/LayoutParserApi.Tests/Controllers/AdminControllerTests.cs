@@ -1,4 +1,5 @@
 using LayoutParserApi.Controllers;
+using LayoutParserApi.Services.Email;
 using LayoutParserApi.Services.Interfaces;
 
 using Microsoft.AspNetCore.Mvc;
@@ -33,7 +34,41 @@ namespace LayoutParserApi.Tests.Controllers
             public Task<MemberChangeOutcome> RemoveAsync(Guid workspaceId, Guid memberOrInviteId, CancellationToken cancellationToken) => throw new NotSupportedException();
         }
 
-        private static AdminController Create(FakeDirectory dir) => new(dir, new NoMembers(), NullLogger<AdminController>.Instance);
+        private sealed class FakeOutbox : IEmailOutboxStore
+        {
+            public List<OutboxEmailStatus> Rows { get; } = new();
+            public Task<EnqueueResult> EnqueueAsync(string toEmail, string template, string dedupeKey, string subject, string body, CancellationToken cancellationToken) => throw new NotSupportedException();
+            public Task<OutboxEmail?> ClaimNextAsync(int maxAttempts, CancellationToken cancellationToken) => throw new NotSupportedException();
+            public Task MarkSentAsync(Guid emailId, CancellationToken cancellationToken) => throw new NotSupportedException();
+            public Task MarkFailedAsync(Guid emailId, string error, int maxAttempts, CancellationToken cancellationToken) => throw new NotSupportedException();
+            public Task<int> CountSentLast24hAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+            public Task<IReadOnlyList<OutboxEmailStatus>> ListAsync(string dedupeKey, string? toEmail, int skip, int take, CancellationToken cancellationToken)
+                => Task.FromResult<IReadOnlyList<OutboxEmailStatus>>(Rows.Where(r => toEmail == null || r.ToEmail == toEmail).ToList());
+            public Task<IReadOnlyDictionary<string, string>> GetLatestStatusByEmailAsync(string dedupeKey, CancellationToken cancellationToken)
+                => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
+        }
+
+        private sealed class FakeSender(bool configured) : IEmailSender
+        {
+            public bool IsConfigured => configured;
+            public Task SendAsync(EmailMessage message, CancellationToken cancellationToken) => Task.CompletedTask;
+        }
+
+        private static AdminController Create(FakeDirectory dir, FakeOutbox? outbox = null, bool smtp = false)
+            => new(dir, new NoMembers(), outbox ?? new FakeOutbox(), new FakeSender(smtp), NullLogger<AdminController>.Instance);
+
+        [Fact]
+        public async Task EmailOutbox_mascara_destinatario_e_expoe_smtpConfigured()
+        {
+            var outbox = new FakeOutbox();
+            outbox.Rows.Add(new OutboxEmailStatus(Guid.NewGuid(), "luan@gmail.com", "welcome-v1", "pending", 0, DateTime.UtcNow, DateTime.UtcNow, null, null));
+            var ok = Assert.IsType<OkObjectResult>(await Create(new FakeDirectory(), outbox, smtp: false).MemberEmailOutbox(Guid.NewGuid(), null, 0, 50, default));
+            var json = System.Text.Json.JsonSerializer.Serialize(ok.Value);
+            Assert.Contains("\"smtpConfigured\":false", json);
+            Assert.Contains("l***@gmail.com", json);
+            Assert.DoesNotContain("luan@gmail.com", json);
+            Assert.Contains("\"status\":\"pending\"", json);
+        }
 
         [Fact]
         public async Task Promove_a_time_e_renomeia()

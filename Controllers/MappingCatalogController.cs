@@ -13,6 +13,17 @@ namespace LayoutParserApi.Controllers
     /// (IdentityDatabase) — funciona com a origem fora do ar, sinalizando <c>sourceStatus</c>
     /// (<c>ok|stale|unavailable</c>). Se o índice cair, só este catálogo responde 503. Lógica nos serviços.
     /// </summary>
+    /// <remarks>
+    /// <para><b>Identidade:</b> o item é endereçado SEMPRE por <c>catalogId</c> (GUID v5 opaco e determinístico). O
+    /// <c>mapperGuid</c> NÃO é chave (repete entre projetos) e está <b>deprecated</b> como forma de endereçar: aparece
+    /// apenas como <c>sourceItemKey</c> informativo. É a mesma referência usada pelo parser de TXT
+    /// (<c>catalogId</c> opcional em <c>POST api/TransformationExecution/execute</c> e <c>execute-candidates</c>).</para>
+    /// <para><b>Origens</b> (<c>sourceSystem</c>, snake_case): <c>connect_us</c>, <c>neogrid</c>, <c>map4connect</c>, <c>own</c>.
+    /// <b>Motores</b> (<c>engine</c>): <c>tcl</c>, <c>xsl</c>, <c>xslt</c>. O sync de cada origem é DESLIGADO por padrão
+    /// (<c>MappingCatalog:Sources:{Origem}:Enabled</c>); leitura de árvore e <c>content</c> usam o que já estiver no índice.</para>
+    /// <para><b>Resiliência:</b> a árvore vem do índice local (funciona com a origem fora); só <c>content</c> toca a origem
+    /// e falha como 503 sem derrubar o resto. Conteúdo cifrado nunca é devolvido.</para>
+    /// </remarks>
     [ApiController]
     [Route("api/mapping-catalog")]
     public class MappingCatalogController : ControllerBase
@@ -27,6 +38,7 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>Nível 1: origens com contagens, último sync e status.</summary>
+        /// <remarks>Itens: <c>{ sourceSystem, enabled, lastSyncUtc?, status (ok|stale|unavailable), lastError?, folderCount, itemCount }</c>.</remarks>
         /// <response code="200">Lista de origens (<c>sourceSystem</c> em snake_case: connect_us, neogrid, map4connect, own).</response>
         /// <response code="503">Índice do catálogo indisponível.</response>
         [HttpGet("sources")]
@@ -74,6 +86,11 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>Detalhe de um item (referência única, por <c>catalogId</c> opaco).</summary>
+        /// <remarks>
+        /// Campos: <c>catalogId</c>, <c>sourceSystem</c>, <c>engine</c>, <c>name</c>, <c>folderId</c>, <c>projectId?</c>, <c>projectName?</c>,
+        /// <c>sourceItemKey</c> (informativo; NÃO use como chave), <c>version?</c>, <c>docType?</c>, <c>contentHash?</c> (versiona o corpo),
+        /// <c>retired</c>, <c>detailUrl</c>, <c>pairedCatalogId?</c> (par TCL&lt;-&gt;XSL da Neogrid), <c>sourceStatus</c>. Retirados continuam resolvíveis.
+        /// </remarks>
         /// <response code="404">Item inexistente.</response>
         [HttpGet("items/{catalogId:guid}")]
         [ProducesResponseType(typeof(MappingCatalogItemView), StatusCodes.Status200OK)]
@@ -81,6 +98,7 @@ namespace LayoutParserApi.Controllers
             => Map(await _catalog.GetItemAsync(catalogId, cancellationToken));
 
         /// <summary>Corpo TCL/XSL/XSLT do item, buscado na origem (única chamada que a toca).</summary>
+        /// <remarks>Resposta: <c>{ catalogId, engine, content }</c>. O corpo nunca é logado; conteúdo cifrado (ConnectUs sem descriptografia) vira 404.</remarks>
         /// <response code="404">Item ou conteúdo inexistente.</response>
         /// <response code="503">Origem ou índice indisponível.</response>
         [HttpGet("items/{catalogId:guid}/content")]

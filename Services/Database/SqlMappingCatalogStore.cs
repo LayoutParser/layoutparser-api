@@ -153,6 +153,47 @@ namespace LayoutParserApi.Services.Database
             => ExecuteAsync("FindItem", async (c, ct) => CatalogReadResult<MappingCatalogItemDto?>.Ok(await QueryItemAsync(c, catalogId, ct)),
                 CatalogReadResult<MappingCatalogItemDto?>.Unavailable(), cancellationToken);
 
+        public Task<CatalogReadResult<IReadOnlyCollection<Guid>>> FindExistingItemIdsAsync(IReadOnlyCollection<Guid> catalogIds, CancellationToken cancellationToken)
+            => ExecuteAsync<CatalogReadResult<IReadOnlyCollection<Guid>>>("FindExistingItemIds", async (connection, ct) =>
+            {
+                var ids = catalogIds.Distinct().ToList();
+                if (ids.Count == 0)
+                    return CatalogReadResult<IReadOnlyCollection<Guid>>.Ok(Array.Empty<Guid>());
+                var found = new List<Guid>();
+                // Lotes de até 500 parâmetros (limite do SQL Server é 2100); IN só com @p0..@pn (valores sempre por parâmetro).
+                foreach (var batch in ids.Chunk(500))
+                {
+                    using var command = new SqlCommand { Connection = connection };
+                    var names = new List<string>(batch.Length);
+                    for (var i = 0; i < batch.Length; i++)
+                    {
+                        names.Add("@p" + i);
+                        command.Parameters.Add("@p" + i, SqlDbType.UniqueIdentifier).Value = batch[i];
+                    }
+                    command.CommandText = $"SELECT CatalogId FROM dbo.tbMappingCatalogItem WHERE CatalogId IN ({string.Join(",", names)});";
+                    using var reader = await command.ExecuteReaderAsync(ct);
+                    while (await reader.ReadAsync(ct))
+                        found.Add(reader.GetGuid(0));
+                }
+                return CatalogReadResult<IReadOnlyCollection<Guid>>.Ok(found);
+            }, CatalogReadResult<IReadOnlyCollection<Guid>>.Unavailable(), cancellationToken);
+
+        public Task<CatalogReadResult<IReadOnlyList<MappingCatalogItemDto>>> FindItemsByMapperGuidAsync(string mapperGuid, CancellationToken cancellationToken)
+            => ExecuteAsync<CatalogReadResult<IReadOnlyList<MappingCatalogItemDto>>>("FindItemsByMapperGuid", async (connection, ct) =>
+            {
+                // JSON_VALUE lança (Msg 13609) em JSON inválido; o CASE com ISJSON protege linhas com SourceRefJson malformado/nulo.
+                using var command = new SqlCommand(
+                    $@"SELECT TOP (50) {ItemColumns} FROM dbo.tbMappingCatalogItem
+                       WHERE Retired = 0 AND CASE WHEN ISJSON(SourceRefJson) = 1 THEN JSON_VALUE(SourceRefJson, '$.mapperGuid') END = @G
+                       ORDER BY SourceSystem, CatalogId;", connection);
+                Add(command, "@G", SqlDbType.NVarChar, 128, mapperGuid);
+                var list = new List<MappingCatalogItemDto>();
+                using var reader = await command.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                    list.Add(ReadItem(reader));
+                return CatalogReadResult<IReadOnlyList<MappingCatalogItemDto>>.Ok(list);
+            }, CatalogReadResult<IReadOnlyList<MappingCatalogItemDto>>.Unavailable(), cancellationToken);
+
         private const string ItemColumns = @"CatalogId, FolderId, SourceSystem, SourceItemKey, Engine, Name, Version, DocType,
                              ContentHash, SourceRefJson, PairedCatalogId, Retired";
 

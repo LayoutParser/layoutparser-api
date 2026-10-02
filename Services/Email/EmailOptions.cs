@@ -14,6 +14,9 @@ namespace LayoutParserApi.Services.Email
 
         public int MaxAttempts { get; set; } = 5;
 
+        /// <summary>Intervalo mínimo (min) entre e-mails ao mesmo destino no mesmo workspace no reenvio de convite (<c>Email:ResendCooldownMinutes</c>).</summary>
+        public int ResendCooldownMinutes { get; set; } = 10;
+
         public SmtpOptions Smtp { get; set; } = new();
     }
 

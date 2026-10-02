@@ -96,7 +96,9 @@ namespace LayoutParserApi.Services.Transformation.Ai
             }
 
             var currentHash = ComputeMapperVoHash(mapperVo);
-            var existing = await _store.GetAsync(mapperGuid, cancellationToken);
+            // Issue #635: o artefato é chaveado por (MapperGuid, ProjectId); ProjectId vazio = legado (null).
+            var projectId = NormalizeProjectId(mapper.ProjectId);
+            var existing = await _store.GetAsync(mapperGuid, projectId, cancellationToken);
 
             // "stale" (ADR §5/§4): existia candidato "ready", mas o hash do MapperVo mudou desde a
             // última geração — o mapper foi editado no catálogo. Recalculado em LEITURA (não
@@ -112,13 +114,13 @@ namespace LayoutParserApi.Services.Transformation.Ai
 
             if (effectiveStatus is GeneratedMapperArtifactStatus.None or GeneratedMapperArtifactStatus.Stale)
             {
-                var began = await _store.TryBeginGeneratingAsync(mapperGuid, correlationId, cancellationToken);
+                var began = await _store.TryBeginGeneratingAsync(mapperGuid, projectId, correlationId, cancellationToken);
                 if (began)
                 {
                     _logger.LogInformation(
                         "Disparando geração automática lazy de TCL/XSL/XSLT para o mapper {MapperGuid} (status anterior={StatusAnterior}, correlationId={CorrelationId})",
                         safeMapperGuid, effectiveStatus, correlationId);
-                    TriggerBackgroundGeneration(mapperGuid, mapper.Name, correlationId);
+                    TriggerBackgroundGeneration(mapperGuid, projectId, mapper.Name, correlationId);
                 }
                 else
                 {
@@ -145,7 +147,7 @@ namespace LayoutParserApi.Services.Transformation.Ai
         /// <see cref="IServiceScopeFactory"/> (os serviços usados aqui são Scoped) — mesmo padrão de
         /// <c>TransformationExecutionController.TryPersistFieldCorrectionContext</c>.
         /// </summary>
-        private void TriggerBackgroundGeneration(string mapperGuid, string? mapperName, string correlationId)
+        private void TriggerBackgroundGeneration(string mapperGuid, string? projectId, string? mapperName, string correlationId)
         {
             var safeMapperGuid = Services.Logging.LogMessageSanitizer.Sanitize(mapperGuid);
             _ = Task.Run(async () =>
@@ -161,14 +163,14 @@ namespace LayoutParserApi.Services.Transformation.Ai
                     if (mapper is null)
                     {
                         scopedLogger.LogWarning("Mapper {MapperGuid} desapareceu do catálogo entre o disparo e a execução da geração automática — abortando.", safeMapperGuid);
-                        await scopedStore.FailAsync(mapperGuid, CancellationToken.None);
+                        await scopedStore.FailAsync(mapperGuid, projectId, CancellationToken.None);
                         return;
                     }
 
                     var mapperVo = ParseMapperVo(mapper.DecryptedContent!, mapperGuid);
                     if (mapperVo is null)
                     {
-                        await scopedStore.FailAsync(mapperGuid, CancellationToken.None);
+                        await scopedStore.FailAsync(mapperGuid, projectId, CancellationToken.None);
                         return;
                     }
 
@@ -191,7 +193,7 @@ namespace LayoutParserApi.Services.Transformation.Ai
                     var mapperVoHash = ComputeMapperVoHash(mapperVo);
 
                     await scopedStore.CompleteAsync(
-                        mapperGuid, content, coverageJson, ValidationBasisDeclaredDsl, mapperVoHash, correlationId, CancellationToken.None);
+                        mapperGuid, projectId, content, coverageJson, ValidationBasisDeclaredDsl, mapperVoHash, correlationId, CancellationToken.None);
 
                     scopedLogger.LogInformation(
                         "Geração automática concluída para o mapper {MapperGuid} (correlationId={CorrelationId})",
@@ -202,7 +204,7 @@ namespace LayoutParserApi.Services.Transformation.Ai
                     // Resiliência (dotnet-standards.md): Ollama/Sysmiddle/SQL podem falhar — nunca
                     // propaga exceção não tratada no fire-and-forget; reverte para "none" (permite retry).
                     scopedLogger.LogError(ex, "Falha na geração automática de TCL/XSL/XSLT para o mapper {MapperGuid} — revertendo para 'none' (nova tentativa no próximo GET).", safeMapperGuid);
-                    await scopedStore.FailAsync(mapperGuid, CancellationToken.None);
+                    await scopedStore.FailAsync(mapperGuid, projectId, CancellationToken.None);
                 }
             }, CancellationToken.None);
         }
@@ -431,6 +433,10 @@ namespace LayoutParserApi.Services.Transformation.Ai
             var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString()));
             return Convert.ToHexString(bytes);
         }
+
+        /// <summary>ProjectId vazio/espaço vira <c>null</c> (linha legada) — mesma regra do store.</summary>
+        internal static string? NormalizeProjectId(string? projectId)
+            => string.IsNullOrWhiteSpace(projectId) ? null : projectId.Trim();
 
         private Task<LayoutParserApi.Models.Entities.Mapper?> ResolveMapperAsync(string mapperGuid, CancellationToken cancellationToken)
             => ResolveMapperAsync(_mapperService, mapperGuid, cancellationToken);

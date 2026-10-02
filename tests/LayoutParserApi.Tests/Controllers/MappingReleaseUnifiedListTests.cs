@@ -114,12 +114,12 @@ namespace LayoutParserApi.Tests.Controllers
         private sealed record Fixture(
             MappingGovernanceController Controller, FakeReleaseStore Releases, FakeGeneratedStore Generated, FakeCatalog Catalog, Guid WorkspaceId);
 
-        private static Fixture Build()
+        private static Fixture Build(IMappingCatalogStore? catalogStore = null)
         {
             var releases = new FakeReleaseStore();
             var generated = new FakeGeneratedStore();
             var catalog = new FakeCatalog();
-            var service = new GeneratedMapperListService(generated, catalog, NullLogger<GeneratedMapperListService>.Instance);
+            var service = new GeneratedMapperListService(generated, catalog, NullLogger<GeneratedMapperListService>.Instance, catalogStore);
             var controller = new MappingGovernanceController(releases, service, new FakeCurrentUser(), NullLogger<MappingGovernanceController>.Instance);
             return new Fixture(controller, releases, generated, catalog, Guid.NewGuid());
         }
@@ -321,6 +321,72 @@ namespace LayoutParserApi.Tests.Controllers
 
             Assert.Equal(1, t1);
             Assert.Equal(1, t2);
+        }
+
+        // --- Issue #634: campos aditivos catalogId/catalogDetailUrl ---
+
+        private static LayoutParserApi.Models.Catalog.MappingCatalogItemDto IndexedItem(Guid id) => new(
+            id, Guid.NewGuid(), LayoutParserApi.Models.Catalog.SourceSystem.Own, "k", "xslt", "n", null, null, null, "{}", false);
+
+        [Fact]
+        public async Task Auto_gerado_indexado_traz_catalogId_e_catalogDetailUrl_sem_alterar_os_campos_existentes()
+        {
+            var catalogStore = new LayoutParserApi.Tests.Catalog.FakeMappingCatalogStore();
+            var id = LayoutParserApi.Services.Catalog.OwnArtifactCatalogSource.CatalogIdFor("GUID-A", null);
+            catalogStore.Items[id] = IndexedItem(id);
+            var f = Build(catalogStore);
+            f.Generated.Records.Add(NewGenerated("GUID-A"));
+
+            var (_, items, _) = Read(await f.Controller.List(f.WorkspaceId, 1, 20));
+
+            var item = items.Single();
+            Assert.Equal(id, item.GetProperty("catalogId").GetGuid());
+            Assert.Equal($"/api/mapping-catalog/items/{id}", item.GetProperty("catalogDetailUrl").GetString());
+            // Contrato antigo intacto: mesmos campos e mesmos valores de antes.
+            Assert.Equal("auto_generated", Origin(item));
+            Assert.Equal("GUID-A", item.GetProperty("mapperGuid").GetString());
+            Assert.Equal("ready", item.GetProperty("status").GetString());
+            Assert.Equal("declared_dsl", item.GetProperty("validationBasis").GetString());
+            Assert.Equal($"/api/workspaces/{f.WorkspaceId}/mappings/GUID-A/generated-transformation", item.GetProperty("detailUrl").GetString());
+        }
+
+        [Fact]
+        public async Task Auto_gerado_nao_indexado_ou_catalogo_fora_omite_os_campos_novos()
+        {
+            var catalogStore = new LayoutParserApi.Tests.Catalog.FakeMappingCatalogStore(); // índice vazio
+            var f = Build(catalogStore);
+            f.Generated.Records.Add(NewGenerated("GUID-A"));
+            var (_, naoIndexado, _) = Read(await f.Controller.List(f.WorkspaceId, 1, 20));
+            Assert.False(naoIndexado.Single().TryGetProperty("catalogId", out _));
+            Assert.False(naoIndexado.Single().TryGetProperty("catalogDetailUrl", out _));
+
+            var down = new LayoutParserApi.Tests.Catalog.FakeMappingCatalogStore { Down = true };
+            var f2 = Build(down);
+            f2.Generated.Records.Add(NewGenerated("GUID-A"));
+            var (total, fora, unavailable) = Read(await f2.Controller.List(f2.WorkspaceId, 1, 20));
+            Assert.Equal(1, total);
+            Assert.False(unavailable); // índice fora NÃO derruba nem sinaliza a listagem
+            Assert.False(fora.Single().TryGetProperty("catalogId", out _));
+
+            var f3 = Build(); // sem catalog store nenhum (cenário legado)
+            f3.Generated.Records.Add(NewGenerated("GUID-A"));
+            Assert.False(Read(await f3.Controller.List(f3.WorkspaceId, 1, 20)).Items.Single().TryGetProperty("catalogId", out _));
+        }
+
+        [Fact]
+        public async Task Auto_gerado_com_projeto_usa_o_catalogId_da_pasta_do_projeto()
+        {
+            var catalogStore = new LayoutParserApi.Tests.Catalog.FakeMappingCatalogStore();
+            var idProjeto = LayoutParserApi.Services.Catalog.OwnArtifactCatalogSource.CatalogIdFor("DUP", "7");
+            var idLegado = LayoutParserApi.Services.Catalog.OwnArtifactCatalogSource.CatalogIdFor("DUP", null);
+            Assert.NotEqual(idProjeto, idLegado);
+            catalogStore.Items[idProjeto] = IndexedItem(idProjeto);
+            var f = Build(catalogStore);
+            f.Generated.Records.Add(NewGenerated("DUP") with { ProjectId = "7" });
+
+            var (_, items, _) = Read(await f.Controller.List(f.WorkspaceId, 1, 20));
+
+            Assert.Equal(idProjeto, items.Single().GetProperty("catalogId").GetGuid());
         }
     }
 }

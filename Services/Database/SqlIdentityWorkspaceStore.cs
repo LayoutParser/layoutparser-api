@@ -333,7 +333,16 @@ CREATE TABLE dbo.tbLpEmailOutbox (
     LastError NVARCHAR(500) NULL,
     CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     SentAt DATETIME2 NULL
-);";
+);
+
+-- Índices aditivos/idempotentes: dedupe (ToEmail,Template,DedupeKey,CreatedAt), ListAsync por e-mail
+-- e LIKE de prefixo em DedupeKey.
+-- TODO: purge de linhas antigas ('sent'/'failed' além da retenção) NÃO implementado — definir política antes.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_tbLpEmailOutbox_Dedupe' AND object_id = OBJECT_ID('dbo.tbLpEmailOutbox'))
+CREATE INDEX IX_tbLpEmailOutbox_Dedupe ON dbo.tbLpEmailOutbox (ToEmail, Template, DedupeKey, CreatedAt DESC);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_tbLpEmailOutbox_DedupeKey' AND object_id = OBJECT_ID('dbo.tbLpEmailOutbox'))
+CREATE INDEX IX_tbLpEmailOutbox_DedupeKey ON dbo.tbLpEmailOutbox (DedupeKey, CreatedAt DESC);";
 
         internal static async Task EnsureSchemaAsync(SqlConnection connection, CancellationToken cancellationToken)
         {

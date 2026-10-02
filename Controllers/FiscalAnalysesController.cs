@@ -38,7 +38,11 @@ namespace LayoutParserApi.Controllers
         /// <param name="workspaceId">Workspace da rota (membership conferida pelo filtro).</param>
         /// <param name="page">Página, base 1 (default 1).</param>
         /// <param name="pageSize">Itens por página (default 20, máximo 100).</param>
-        /// <response code="200"><c>{ page, pageSize, total, items[] }</c> — só análises do dono e ainda não expiradas.</response>
+        /// <response code="200"><c>{ page, pageSize, total, items[] }</c> — só análises do dono e ainda não expiradas.
+        /// Cada item: <c>analysisId</c>, <c>createdAt</c>, <c>expiresAt</c>, <c>source</c> ('upload'|'auto'),
+        /// <c>layoutName</c> (NUNCA nulo/vazio: LayoutName gravado, senão o LayoutGuid, senão "Layout não informado";
+        /// o dado gravado não é alterado), <c>layoutGuid</c> (NULLABLE: nulo em layouts anexados por arquivo),
+        /// <c>detectedType</c> (NULLABLE), <c>fileCount</c>, <c>totalSizeBytes</c>.</response>
         /// <response code="400">Paginação inválida.</response>
         /// <response code="404">Não é membro do workspace.</response>
         /// <response code="503">Banco de identidade indisponível.</response>
@@ -64,7 +68,7 @@ namespace LayoutParserApi.Controllers
                         createdAt = i.CreatedAtUtc,
                         expiresAt = i.ExpiresAtUtc,
                         source = i.Source,
-                        layoutName = i.LayoutName,
+                        layoutName = FiscalAnalysisLayoutDisplay.Resolve(i.LayoutName, i.LayoutGuid),
                         layoutGuid = i.LayoutGuid,
                         detectedType = i.DetectedType,
                         fileCount = i.FileCount,
@@ -79,7 +83,9 @@ namespace LayoutParserApi.Controllers
         }
 
         /// <summary>Detalhe de uma análise: layout usado e arquivos anexados (sem caminho de disco).</summary>
-        /// <response code="200"><c>{ analysisId, workspaceId, createdAt, expiresAt, source, layout, files[] }</c>.</response>
+        /// <response code="200"><c>{ analysisId, workspaceId, createdAt, expiresAt, source, detectedType, layout, files[] }</c>.
+        /// <c>layout.layoutName</c> nunca é nulo/vazio (mesmo fallback da listagem); <c>layout.layoutGuid</c> e
+        /// <c>detectedType</c> são NULLABLE.</response>
         /// <response code="404">Análise inexistente, expirada, de outro usuário/workspace.</response>
         /// <response code="503">Banco de identidade indisponível.</response>
         [HttpGet("{analysisId:guid}")]
@@ -108,7 +114,7 @@ namespace LayoutParserApi.Controllers
                     {
                         mode = a.LayoutMode,
                         layoutGuid = a.LayoutGuid,
-                        layoutName = a.LayoutName,
+                        layoutName = FiscalAnalysisLayoutDisplay.Resolve(a.LayoutName, a.LayoutGuid),
                         fileId = layoutFile?.AnalysisFileId
                     },
                     files = detail.Files.Select(f => new

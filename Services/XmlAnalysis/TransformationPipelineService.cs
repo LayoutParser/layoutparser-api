@@ -3,6 +3,8 @@ using System.Xml;
 using System.Xml.Linq;
 using System.Xml.Xsl;
 
+using LayoutParserApi.Models.Catalog;
+using LayoutParserApi.Services.Catalog;
 using LayoutParserApi.Services.Logging;
 using LayoutParserApi.Services.Security;
 using LayoutParserApi.Services.XmlAnalysis.Models;
@@ -22,12 +24,15 @@ namespace LayoutParserApi.Services.XmlAnalysis
         private readonly string _tclBasePath;
         private readonly string _xslBasePath;
         private readonly IGeneratedXslResolver? _generatedXslResolver;
+        private readonly ICatalogTclResolver? _catalogTclResolver;
 
         public TransformationPipelineService(
             ILogger<TransformationPipelineService> logger,
             IConfiguration configuration,
-            IGeneratedXslResolver? generatedXslResolver = null)
+            IGeneratedXslResolver? generatedXslResolver = null,
+            ICatalogTclResolver? catalogTclResolver = null)
         {
+            _catalogTclResolver = catalogTclResolver;
             _logger = logger;
             _generatedXslResolver = generatedXslResolver;
             _tclBasePath = configuration["TransformationPipeline:TclPath"] ?? @"C:\inetpub\wwwroot\layoutparser\TCL";
@@ -37,7 +42,11 @@ namespace LayoutParserApi.Services.XmlAnalysis
         /// <summary>
         /// Transforma TXT MQSeries/IDOC → MAP → XML Intermediário → XSL → XML NFe
         /// </summary>
-        public async Task<TransformationPipelineResult> TransformTxtToXmlAsync(string txtContent, string layoutName, string targetDocumentType = "NFe")
+        /// <param name="catalogId">
+        /// Issue #636: <c>catalogId</c> do item de catálogo (engine <c>tcl</c>) a usar como FALLBACK quando não há
+        /// arquivo TCL em disco. Opcional; o disco continua sendo a primeira fonte.
+        /// </param>
+        public async Task<TransformationPipelineResult> TransformTxtToXmlAsync(string txtContent, string layoutName, string targetDocumentType = "NFe", Guid? catalogId = null)
         {
             var result = new TransformationPipelineResult
             {
@@ -53,7 +62,7 @@ namespace LayoutParserApi.Services.XmlAnalysis
                     layoutName, targetDocumentType);
 
                 // Etapa 1: TXT → XML Intermediário (usando MAP/TCL)
-                var intermediateXml = await TransformTxtToIntermediateXmlAsync(txtContent, layoutName, result);
+                var intermediateXml = await TransformTxtToIntermediateXmlAsync(txtContent, layoutName, result, catalogId);
                 if (intermediateXml == null)
                 {
                     result.Success = false;
@@ -158,12 +167,14 @@ namespace LayoutParserApi.Services.XmlAnalysis
         /// <summary>
         /// Etapa 1: Transforma TXT MQSeries/IDOC em XML Intermediário usando MAP
         /// </summary>
-        private async Task<string> TransformTxtToIntermediateXmlAsync(string txtContent, string layoutName, TransformationPipelineResult result)
+        private async Task<string> TransformTxtToIntermediateXmlAsync(string txtContent, string layoutName, TransformationPipelineResult result, Guid? catalogId = null)
         {
             try
             {
                 // Carregar arquivo MAP
-                var mapContent = await LoadMappingFileAsync(layoutName);
+                // Disco primeiro (compatibilidade); depois o TCL do catálogo por catalogId (issue #636).
+                var mapContent = await LoadMappingFileAsync(layoutName)
+                    ?? await TryGetCatalogTclAsync(catalogId, result);
                 if (mapContent == null)
                 {
                     result.ErrorCode = "map_not_found";
@@ -352,9 +363,34 @@ namespace LayoutParserApi.Services.XmlAnalysis
         }
 
         /// <summary>
+        /// Fallback do TCL pelo catálogo (issue #636): nunca lança; sem catalogId/resolver/conteúdo => null e o
+        /// chamador mantém o <c>map_not_found</c> exato. O hash do conteúdo vai nos warnings (versionamento, R5).
+        /// </summary>
+        private async Task<string?> TryGetCatalogTclAsync(Guid? catalogId, TransformationPipelineResult result)
+        {
+            if (_catalogTclResolver == null || catalogId is null || catalogId == Guid.Empty) return null;
+            try
+            {
+                var tcl = await _catalogTclResolver.ResolveTclAsync(catalogId.Value);
+                if (tcl == null) return null;
+                _logger.LogInformation("TCL ausente em disco; usando o item de catálogo {CatalogId} ({SourceSystem}).",
+                    tcl.CatalogId, tcl.SourceSystem);
+                result.Warnings.Add($"TCL obtido do catálogo (catalogId {tcl.CatalogId}, origem {tcl.SourceSystem.ToWireName()}, contentHash {tcl.ContentHash ?? "n/d"}) — não havia arquivo em disco.");
+                if (tcl.Retired)
+                    result.Warnings.Add("O item de catálogo usado está retirado (não aparece mais na origem).");
+                return tcl.Content;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Falha ao resolver o TCL do catálogo {CatalogId}", LogMessageSanitizer.Sanitize(catalogId.ToString()));
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Busca o XSL do artefato gerado Ready (nunca lança; falha => null => erro exato do chamador).
-        /// O TCL gerado/da referência virá pelo catálogo (#636) numa fase seguinte: por ora entrada TXT
-        /// sem TCL em disco segue em <c>map_not_found</c>.
+        /// O TCL vem do disco ou, como fallback, do catálogo por catalogId (#636, <see cref="TryGetCatalogTclAsync"/>);
+        /// entrada TXT sem TCL em nenhuma das duas fontes segue em <c>map_not_found</c>.
         /// </summary>
         private async Task<string?> TryGetGeneratedXslAsync(string? layoutName, TransformationPipelineResult result)
         {

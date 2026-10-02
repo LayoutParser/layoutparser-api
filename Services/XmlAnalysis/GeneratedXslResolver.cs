@@ -53,12 +53,14 @@ namespace LayoutParserApi.Services.XmlAnalysis
                 var mapperGuid = await ResolveMapperGuidAsync(layoutName);
                 if (string.IsNullOrWhiteSpace(mapperGuid)) return null;
                 var decrypted = await ResolveMapperContentAsync(mapperGuid);
+                // Issue #635: o artefato é chaveado por (MapperGuid, ProjectId); sem projeto, linha legada.
+                var projectId = await ResolveMapperProjectIdAsync(mapperGuid);
 
                 using var scope = _scopeFactory.CreateScope();
                 var store = scope.ServiceProvider.GetService<IGeneratedMapperArtifactStore>();
                 if (store is null) return null;
 
-                var record = await store.GetAsync(mapperGuid, cancellationToken);
+                var record = await store.GetAsync(mapperGuid, projectId, cancellationToken);
                 if (record is null || !string.Equals(record.Status, GeneratedMapperArtifactStatus.Ready, StringComparison.OrdinalIgnoreCase)
                     || string.IsNullOrWhiteSpace(record.Content))
                 {
@@ -98,6 +100,22 @@ namespace LayoutParserApi.Services.XmlAnalysis
             using var scope = _scopeFactory.CreateScope();
             var mappers = await scope.ServiceProvider.GetRequiredService<ICachedMapperService>().GetAllMappersAsync();
             return mappers.FirstOrDefault(m => string.Equals(m.MapperGuid, mapperGuid, StringComparison.OrdinalIgnoreCase))?.DecryptedContent;
+        }
+
+        /// <summary>ProjectId do mapper (issue #635); vazio = legado. Virtual p/ teste; nunca lança (degrada para legado).</summary>
+        protected virtual async Task<string?> ResolveMapperProjectIdAsync(string mapperGuid)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var mappers = await scope.ServiceProvider.GetRequiredService<ICachedMapperService>().GetAllMappersAsync();
+                var id = mappers.FirstOrDefault(m => string.Equals(m.MapperGuid, mapperGuid, StringComparison.OrdinalIgnoreCase))?.ProjectId;
+                return string.IsNullOrWhiteSpace(id) ? null : id.Trim();
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>Reaproveita o hash do serviço de geração (não duplica). Virtual p/ teste.</summary>

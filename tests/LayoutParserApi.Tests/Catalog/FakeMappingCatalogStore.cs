@@ -55,6 +55,25 @@ namespace LayoutParserApi.Tests.Catalog
         public Task<CatalogReadResult<MappingCatalogItemDto?>> FindItemAsync(Guid id, CancellationToken ct)
             => Task.FromResult(Down ? CatalogReadResult<MappingCatalogItemDto?>.Unavailable() : CatalogReadResult<MappingCatalogItemDto?>.Ok(Items.GetValueOrDefault(id)));
 
+        public Task<CatalogReadResult<IReadOnlyList<MappingCatalogItemDto>>> FindItemsByMapperGuidAsync(string mapperGuid, CancellationToken ct)
+        {
+            if (Down) return Task.FromResult(CatalogReadResult<IReadOnlyList<MappingCatalogItemDto>>.Unavailable());
+            IReadOnlyList<MappingCatalogItemDto> l = Items.Values.Where(i => !i.Retired && MapperGuidOf(i) is { } g
+                && string.Equals(g, mapperGuid, StringComparison.OrdinalIgnoreCase)).OrderBy(i => i.CatalogId).ToList();
+            return Task.FromResult(CatalogReadResult<IReadOnlyList<MappingCatalogItemDto>>.Ok(l));
+        }
+
+        private static string? MapperGuidOf(MappingCatalogItemDto i)
+        {
+            if (string.IsNullOrWhiteSpace(i.SourceRefJson)) return null;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(i.SourceRefJson);
+                return doc.RootElement.TryGetProperty("mapperGuid", out var g) && g.ValueKind == System.Text.Json.JsonValueKind.String ? g.GetString() : null;
+            }
+            catch (System.Text.Json.JsonException) { return null; }
+        }
+
         public DateTime? ServerNow = new DateTime(2026, 10, 2, 12, 0, 0, DateTimeKind.Utc);
         public bool LockBusy;
         public int LocksTaken, LocksReleased;

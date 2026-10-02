@@ -104,18 +104,40 @@ namespace LayoutParserApi.Services.Health
     {
         private readonly IOptions<LowCodeRunnerOptions> _options;
 
-        public LowCodeRunnerHealthCheck(IOptions<LowCodeRunnerOptions> options) => _options = options;
+        private readonly LowCodeRunnerHttpClient? _http;
 
-        public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+        public LowCodeRunnerHealthCheck(IOptions<LowCodeRunnerOptions> options, LowCodeRunnerHttpClient? http = null)
+        {
+            _options = options;
+            _http = http;
+        }
+
+        public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {
             var options = _options.Value;
+
+            // ✅ Issue #641: com BaseUrl a sonda é GET /v1/health (nunca deep=true). Falha => Degraded, nunca Unhealthy.
+            if (LowCodeRunnerHttpClient.IsConfigured(options) && _http != null)
+            {
+                var (ok, detail) = await _http.CheckHealthAsync(cancellationToken);
+                if (!ok)
+                    return HealthCheckResult.Degraded(detail + " Transformacao low-code indisponivel.");
+                if (options.AllowedPackageGuids is null || options.AllowedPackageGuids.Count == 0)
+                    return HealthCheckResult.Degraded("LowCode:AllowedPackageGuids vazio — nenhum mapper sera encontrado (query vira IN (NULL)); transformacao low-code indisponivel.");
+                return HealthCheckResult.Healthy(detail);
+            }
+            return CheckLegacy(options);
+        }
+
+        private static HealthCheckResult CheckLegacy(LowCodeRunnerOptions options)
+        {
             var path = options.RunnerPath;
 
             if (string.IsNullOrWhiteSpace(path))
-                return Task.FromResult(HealthCheckResult.Degraded("LowCode:RunnerPath nao configurado — transformacao low-code indisponivel."));
+                return (HealthCheckResult.Degraded("LowCode:RunnerPath nao configurado — transformacao low-code indisponivel."));
 
             if (!File.Exists(path))
-                return Task.FromResult(HealthCheckResult.Degraded($"LowCode:RunnerPath nao existe ({path}) — transformacao low-code indisponivel."));
+                return (HealthCheckResult.Degraded($"LowCode:RunnerPath nao existe ({path}) — transformacao low-code indisponivel."));
 
             // ✅ Gate #107/#108: AllowedPackageGuids vazio faz a query de mapper virar `IN (NULL)`,
             // nunca batendo com nada — nenhum erro visível, só "mapper não encontrado" longe da causa.
@@ -124,10 +146,10 @@ namespace LayoutParserApi.Services.Health
             // setada depois do bind, teste manual, etc.) — mesma severidade Degraded do resto deste
             // health check: parse/catálogo seguem servindo, só a transformação low-code fica capenga.
             if (options.AllowedPackageGuids is null || options.AllowedPackageGuids.Count == 0)
-                return Task.FromResult(HealthCheckResult.Degraded(
+                return (HealthCheckResult.Degraded(
                     "LowCode:AllowedPackageGuids vazio — nenhum mapper sera encontrado (query vira IN (NULL)); transformacao low-code indisponivel."));
 
-            return Task.FromResult(HealthCheckResult.Healthy("Runner low-code encontrado."));
+            return (HealthCheckResult.Healthy("Runner low-code encontrado."));
         }
     }
 

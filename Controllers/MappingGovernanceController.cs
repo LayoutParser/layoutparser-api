@@ -81,12 +81,20 @@ namespace LayoutParserApi.Controllers
         /// opção b).</b> Além das releases reais (<c>origin: "draft_compile"</c>), a lista traz os
         /// candidatos TCL/XSLT gerados automaticamente (<c>origin: "auto_generated"</c>). Nada migra de
         /// tabela. Item auto-gerado: <c>{ origin, mapperGuid, mapperName?, status, validationBasis?,
-        /// coverage?, generatedAt?, correlationId?, detailUrl }</c> — SEM <c>releaseId</c>/<c>draftId</c>/
+        /// coverage?, generatedAt?, correlationId?, detailUrl, catalogId?, catalogDetailUrl? }</c> — SEM <c>releaseId</c>/<c>draftId</c>/
         /// <c>testRunSummary</c>/<c>approvedByUserId</c>/<c>engine</c> (omitidos, não <c>null</c>).
         /// <c>validationBasis</c> é <c>declared_dsl</c>: cobertura contra o DSL declarado, NUNCA execução
         /// real (Fiscal Test Lab). O conteúdo TCL/XSLT NÃO vem na lista (mesmo padrão das releases):
         /// use <c>detailUrl</c> (<c>GET .../mappings/{mapperGuid}/generated-transformation</c>). Itens
         /// auto-gerados não são elegíveis a approve/publish/rollback (esses só aceitam <c>releaseId</c>).
+        /// </para>
+        /// <para>
+        /// <b>Catálogo unificado (issue #634, aditivo).</b> Itens <c>auto_generated</c> já indexados em
+        /// <c>api/mapping-catalog</c> trazem <c>catalogId</c> (GUID opaco, referência única — a mesma do portal e do
+        /// parser de TXT) e <c>catalogDetailUrl</c> (<c>/api/mapping-catalog/items/{catalogId}</c>). Os dois campos
+        /// são OMITIDOS (não <c>null</c>) enquanto o item não estiver no índice (sync desligado ou ainda não rodou).
+        /// <c>mapperGuid</c> permanece por compatibilidade mas está <b>deprecated</b>: não é único entre projetos —
+        /// migre para <c>catalogId</c>. Nenhum campo existente mudou.
         /// </para>
         /// <para>
         /// Filtros nessa unificação: <c>origin</c> (<c>draft_compile</c> | <c>auto_generated</c>, ausente =
@@ -370,6 +378,9 @@ namespace LayoutParserApi.Controllers
             generatedAt = item.GeneratedAt,
             correlationId = item.CorrelationId,
             detailUrl = $"/api/workspaces/{workspaceId}/mappings/{Uri.EscapeDataString(item.MapperGuid)}/generated-transformation",
+            // Issue #634 (aditivo): referência única do catálogo; omitidos enquanto o item não está indexado.
+            catalogId = item.CatalogId,
+            catalogDetailUrl = item.CatalogId is Guid cid ? $"/api/mapping-catalog/items/{cid}" : null,
         };
 
         private static MappingReleaseGovernanceResponse ToReleaseResponse(MappingReleaseDetail release) => new()

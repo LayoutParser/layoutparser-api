@@ -17,6 +17,22 @@ namespace LayoutParserApi.Models.Entities.Fiscal
         public const string Catalog = "catalog";
     }
 
+    /// <summary>
+    /// Nome de exibição do layout na API de histórico. Apenas apresentação: o dado gravado
+    /// (<c>LayoutName</c>) não é alterado. Fallback: LayoutName, LayoutGuid, "Layout não informado".
+    /// </summary>
+    public static class FiscalAnalysisLayoutDisplay
+    {
+        public const string NotInformed = "Layout não informado";
+
+        public static string Resolve(string? layoutName, string? layoutGuid)
+        {
+            if (!string.IsNullOrWhiteSpace(layoutName)) return layoutName.Trim();
+            if (!string.IsNullOrWhiteSpace(layoutGuid)) return layoutGuid.Trim();
+            return NotInformed;
+        }
+    }
+
     /// <summary>Papel de um arquivo dentro da análise (coluna <c>Role</c>).</summary>
     public static class FiscalAnalysisFileRole
     {

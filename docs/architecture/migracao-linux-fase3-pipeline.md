@@ -2,6 +2,20 @@
 
 > **Atualização 2026-09-29:** a `LayoutParserLib` foi removida/arquivada; a criptografia Sysmiddle vive no `layoutparser-decrypt` (fonte da verdade). Menções à Lib abaixo são contexto histórico.
 
+## Fluxo de deploy de producao (atualizado 2026-10-02)
+
+- Merge `develop -> master` dispara `deploy-linux.yml`, que **pausa aguardando 1 clique de aprovacao**
+  (environment `production`, Required reviewers = `elson-vinicius-lopes`; restrito a branch `master`).
+  Merges que so alteram `docs/**` ou `*.md` nao disparam.
+- Apos aprovar: testes, publish, backup em `<path>.prev`, rsync, restart e smoke `/health/ready`
+  (HTTP 200, 12x10 s). Falha => **rollback automatico** para `.prev`. Timeout 30 min; concurrency
+  `deploy-prod-linux` sem cancelamento.
+- Execucao manual (reserva): Actions > Deploy API Linux > Run workflow (branch master) e digitar `DEPLOY-LINUX`
+  (a aprovacao do environment tambem se aplica).
+- O `deploy.yml` Windows ja foi removido (commit 72f4906).
+
+Historico da Fase 3 (pipeline originalmente manual):
+
 Adicionados **em paralelo** (sem tocar `deploy.yml`/`ci-dev.yml`): `.github/workflows/ci-dev-linux.yml` e
 `deploy-linux.yml`, ambos `workflow_dispatch` (o de producao exige digitar `DEPLOY-LINUX`).
 Deploy = `dotnet publish` + rsync para `/opt/layoutparser-api` + unit `deploy/linux/layoutparser-api.service`

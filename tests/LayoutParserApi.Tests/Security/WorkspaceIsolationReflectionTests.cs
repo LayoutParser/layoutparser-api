@@ -31,6 +31,9 @@ namespace LayoutParserApi.Tests.Security
             ["AdminController.WorkspaceMembers"] =
                 "GET /api/admin/workspaces/{workspaceId}/members: visão GLOBAL do super-administrador, cross-workspace de propósito. Protegida por [RequireSudo] no controller (não-sudo -> 404; sudo só por e-mail em Security:SudoEmails, com auditoria por acesso) — ver SudoTests.",
 
+            ["AdminController.MemberEmailOutbox"] =
+                "GET /api/admin/workspaces/{workspaceId}/members/email-outbox: rastreio somente leitura de e-mails de convite, cross-workspace de propósito. Protegida por [RequireSudo] no controller (não-sudo -> 404) e auditada; destinatário mascarado, sem corpo.",
+
             ["AdminController.UpdateWorkspace"] =
                 "PATCH /api/admin/workspaces/{workspaceId}: promoção/renomeio de workspace pelo super-administrador, cross-workspace de propósito. Protegida por [RequireSudo] no controller (não-sudo -> 404), só promove a 'team' (nunca rebaixa) e é auditada — ver AdminControllerTests/SudoTests.",
         };

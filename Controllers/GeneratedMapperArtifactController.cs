@@ -1,4 +1,6 @@
+using LayoutParserApi.Models.Catalog;
 using LayoutParserApi.Models.Entities.Identity;
+using LayoutParserApi.Services.Catalog;
 using LayoutParserApi.Services.Filters;
 using LayoutParserApi.Services.Transformation.Ai;
 
@@ -21,12 +23,15 @@ namespace LayoutParserApi.Controllers
     {
         private readonly IGeneratedMapperArtifactService _service;
         private readonly ILogger<GeneratedMapperArtifactController> _logger;
+        private readonly IMappingCatalogService? _catalog;
 
         public GeneratedMapperArtifactController(
-            IGeneratedMapperArtifactService service, ILogger<GeneratedMapperArtifactController> logger)
+            IGeneratedMapperArtifactService service, ILogger<GeneratedMapperArtifactController> logger,
+            IMappingCatalogService? catalog = null)
         {
             _service = service;
             _logger = logger;
+            _catalog = catalog;
         }
 
         /// <summary>
@@ -34,6 +39,8 @@ namespace LayoutParserApi.Controllers
         /// <see cref="LayoutTreeController.GetLayoutTree"/>). <c>mappingId</c> não resolvido no
         /// catálogo <c>tbMapper</c> → 404 (indistinguível de não-membro, mesmo padrão fail-closed).
         /// O segmento de rota <c>{mappingId}</c> é o GUID do mapeador (<c>mapperGuid</c> na resposta).
+        /// <b>Deprecated (issue #634/#639):</b> endereçar por <c>mapperGuid</c> é ambíguo entre projetos; prefira o
+        /// <c>catalogId</c> de <c>api/mapping-catalog</c>. A rota continua funcionando para GUIDs não ambíguos.
         /// </summary>
         /// <param name="workspaceId">Workspace da rota (membership conferida pelo filtro de RBAC).</param>
         /// <param name="mappingId">GUID do mapeador Sysmiddle no catálogo <c>tbMapper</c>.</param>
@@ -64,14 +71,30 @@ namespace LayoutParserApi.Controllers
         /// </para>
         /// </response>
         /// <response code="404">Mapper não encontrado no catálogo ou usuário não é membro do workspace.</response>
+        /// <response code="409">
+        /// (Issue #634, design D6) O <c>mapperGuid</c> casa com MAIS DE UM item do catálogo unificado
+        /// (<c>mapperGuid</c> não é único entre projetos): a API nunca adivinha. Corpo:
+        /// <c>{ error, mapperGuid, candidates: [{ catalogId, sourceSystem, projectId?, projectName?, engine, detailUrl }] }</c>.
+        /// Escolha um <c>catalogId</c> e use <c>/api/mapping-catalog/items/{catalogId}</c>. Se o índice do catálogo estiver
+        /// indisponível a rota segue como antes (sem checagem de ambiguidade).
+        /// </response>
         /// <response code="503">Catálogo de mappers (tbMapper) indisponível no momento.</response>
         [HttpGet("generated-transformation")]
         [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
+        [ProducesResponseType(typeof(GeneratedMapperArtifactResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+        [Obsolete("Endereçar por mapperGuid é ambíguo entre projetos (issue #634/#639). Use o catalogId de api/mapping-catalog (GET api/mapping-catalog/items/{catalogId}). Mantido por compatibilidade.")]
         public async Task<IActionResult> GetGeneratedTransformation(Guid workspaceId, string mappingId, CancellationToken cancellationToken)
         {
             var correlationId = HttpContext.TraceIdentifier;
             try
             {
+                var ambiguous = await TryGetAmbiguityAsync(mappingId, cancellationToken);
+                if (ambiguous is not null)
+                    return Conflict(ambiguous);
+
                 var result = await _service.GetOrTriggerAsync(mappingId, correlationId, cancellationToken);
                 return result is null ? NotFound() : Ok(result);
             }
@@ -79,6 +102,45 @@ namespace LayoutParserApi.Controllers
             {
                 _logger.LogError(ex, "Falha ao consultar/disparar geração automática para o mapper {MapperGuid}.", mappingId);
                 return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "Não foi possível consultar o catálogo de mappers no momento." });
+            }
+        }
+
+        /// <summary>
+        /// 409 quando o <c>mapperGuid</c> casa com mais de um item ativo do catálogo (nunca adivinha). Qualquer falha do
+        /// catálogo degrada para "sem ambiguidade detectada" — a rota antiga não pode cair por causa do índice novo.
+        /// </summary>
+        private async Task<object?> TryGetAmbiguityAsync(string mapperGuid, CancellationToken cancellationToken)
+        {
+            if (_catalog is null)
+                return null;
+            try
+            {
+                var found = await _catalog.FindByMapperGuidAsync(mapperGuid, cancellationToken);
+                if (found.Outcome != CatalogOutcome.Ok || found.Value is not { Count: > 1 } items)
+                    return null;
+                return new
+                {
+                    error = "O mapperGuid informado corresponde a mais de um item do catálogo. Escolha um catalogId (api/mapping-catalog).",
+                    mapperGuid,
+                    candidates = items.Select(i => new
+                    {
+                        catalogId = i.CatalogId,
+                        sourceSystem = i.SourceSystem.ToWireName(),
+                        projectId = i.ProjectId,
+                        projectName = i.ProjectName,
+                        engine = i.Engine,
+                        detailUrl = i.DetailUrl,
+                    }).ToList(),
+                };
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Falha ao checar ambiguidade de mapperGuid no catálogo — seguindo sem a checagem.");
+                return null;
             }
         }
     }

@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Email;
 using LayoutParserApi.Services.Filters;
 using LayoutParserApi.Services.Interfaces;
 using LayoutParserApi.Services.Security;
@@ -24,10 +25,14 @@ namespace LayoutParserApi.Controllers
 
         private readonly IAdminDirectoryStore _directory;
         private readonly IWorkspaceMemberStore _members;
+        private readonly IEmailOutboxStore _outbox;
+        private readonly IEmailSender _emailSender;
         private readonly ILogger<AdminController> _logger;
 
-        public AdminController(IAdminDirectoryStore directory, IWorkspaceMemberStore members, ILogger<AdminController> logger)
+        public AdminController(IAdminDirectoryStore directory, IWorkspaceMemberStore members, IEmailOutboxStore outbox, IEmailSender emailSender, ILogger<AdminController> logger)
         {
+            _outbox = outbox;
+            _emailSender = emailSender;
             _directory = directory;
             _members = members;
             _logger = logger;
@@ -87,11 +92,46 @@ namespace LayoutParserApi.Controllers
                     return NotFound(new { error = "Workspace não encontrado." });
 
                 var list = await _members.ListAsync(workspaceId, cancellationToken);
+                IReadOnlyDictionary<string, string>? invite = null;
+                try { invite = await _outbox.GetLatestStatusByEmailAsync(workspaceId.ToString("N"), cancellationToken); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { _logger.LogWarning(ex, "Status de e-mail de convite indisponível."); }
                 return Ok(list.Select(m => new
                 {
+                    inviteEmailStatus = m.Email != null && invite != null && invite.TryGetValue(m.Email, out var st) ? st : null,
                     userId = m.UserId, displayName = m.DisplayName, email = m.Email,
                     role = m.Role, status = m.Status, createdAt = m.CreatedAt
                 }));
+            });
+
+        /// <summary>
+        /// Rastreio (somente leitura) dos e-mails de convite do workspace, mais recentes primeiro. Filtro opcional <c>email</c>.
+        /// <c>smtpConfigured=false</c> significa que os e-mails "pending" NÃO serão enviados (não é falha). Destinatário mascarado;
+        /// <c>lastError</c> traz só o tipo da exceção. Só sudo; auditado.
+        /// </summary>
+        /// <param name="workspaceId">Workspace consultado.</param>
+        /// <param name="email">Filtra por destinatário (opcional).</param>
+        /// <param name="skip">Itens a pular.</param>
+        /// <param name="take">Itens por página (1..200).</param>
+        [HttpGet("workspaces/{workspaceId:guid}/members/email-outbox")]
+        public Task<IActionResult> MemberEmailOutbox(Guid workspaceId, [FromQuery] string? email = null, [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken cancellationToken = default)
+            => Run(async () =>
+            {
+                if (!await _directory.WorkspaceExistsAsync(workspaceId, cancellationToken))
+                    return NotFound(new { error = "Workspace não encontrado." });
+
+                var (s, t) = Page(skip, take);
+                var filtro = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
+                var items = await _outbox.ListAsync(workspaceId.ToString("N"), filtro, s, t, cancellationToken);
+                return Ok(new
+                {
+                    smtpConfigured = _emailSender.IsConfigured,
+                    items = items.Select(i => new
+                    {
+                        emailId = i.EmailId, template = i.Template, status = i.Status, attempts = i.Attempts,
+                        createdAt = i.CreatedAt, nextAttemptAt = i.NextAttemptAt, sentAt = i.SentAt,
+                        lastError = i.LastError, recipient = EmailMasking.Mask(i.ToEmail)
+                    })
+                });
             });
 
         [HttpGet("users")]

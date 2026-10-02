@@ -24,25 +24,42 @@ namespace LayoutParserApi.Services.Database
             return c;
         }
 
-        public async Task<bool> EnqueueAsync(string toEmail, string template, string dedupeKey, string subject, string body, CancellationToken ct)
+        public async Task<EnqueueResult> EnqueueAsync(string toEmail, string template, string dedupeKey, string subject, string body, CancellationToken ct)
         {
             using var c = await OpenAsync(ct);
             using var cmd = new SqlCommand(
-                @"IF EXISTS (SELECT 1 FROM dbo.tbLpEmailOutbox WHERE ToEmail = @To AND Template = @Template AND DedupeKey = @Key
-                             AND CreatedAt > DATEADD(HOUR, -24, SYSUTCDATETIME()))
-                    SELECT 0;
+                @"SET XACT_ABORT ON;
+                  BEGIN TRANSACTION;
+                  -- Lock por chave de dedupe (hash): serializa SELECT+INSERT só entre quem disputa a mesma chave.
+                  -- Um único recurso por transação => sem deadlock entre chaves.
+                  DECLARE @Res NVARCHAR(255) = N'lp-outbox:' + CONVERT(NVARCHAR(64), HASHBYTES('SHA2_256', @To + N'|' + @Template + N'|' + @Key), 2);
+                  DECLARE @rc INT;
+                  EXEC @rc = sp_getapplock @Resource = @Res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000;
+                  IF @rc < 0 THROW 50001, 'Timeout no lock de dedupe do outbox.', 1;
+                  DECLARE @Existing UNIQUEIDENTIFIER = (SELECT TOP (1) EmailId FROM dbo.tbLpEmailOutbox
+                        WHERE ToEmail = @To AND Template = @Template AND DedupeKey = @Key
+                          AND CreatedAt > DATEADD(HOUR, -24, SYSUTCDATETIME()) ORDER BY CreatedAt DESC);
+                  IF @Existing IS NOT NULL
+                  BEGIN
+                    COMMIT TRANSACTION;
+                    SELECT CAST(0 AS BIT), @Existing;
+                  END
                   ELSE
                   BEGIN
+                    DECLARE @New UNIQUEIDENTIFIER = NEWID();
                     INSERT INTO dbo.tbLpEmailOutbox (EmailId, ToEmail, Template, DedupeKey, Subject, Body, Status, Attempts, NextAttemptAt, CreatedAt)
-                    VALUES (NEWID(), @To, @Template, @Key, @Subject, @Body, 'pending', 0, SYSUTCDATETIME(), SYSUTCDATETIME());
-                    SELECT 1;
+                    VALUES (@New, @To, @Template, @Key, @Subject, @Body, 'pending', 0, SYSUTCDATETIME(), SYSUTCDATETIME());
+                    COMMIT TRANSACTION;
+                    SELECT CAST(1 AS BIT), @New;
                   END", c);
             cmd.Parameters.AddWithValue("@To", toEmail);
             cmd.Parameters.AddWithValue("@Template", template);
             cmd.Parameters.AddWithValue("@Key", dedupeKey);
             cmd.Parameters.AddWithValue("@Subject", subject);
             cmd.Parameters.AddWithValue("@Body", body);
-            return (int)(await cmd.ExecuteScalarAsync(ct))! == 1;
+            using var r = await cmd.ExecuteReaderAsync(ct);
+            await r.ReadAsync(ct);
+            return new EnqueueResult(r.GetBoolean(0), r.GetGuid(1));
         }
 
         public async Task<OutboxEmail?> ClaimNextAsync(int maxAttempts, CancellationToken ct)
@@ -55,11 +72,11 @@ namespace LayoutParserApi.Services.Database
                     WHERE Status = 'pending' AND NextAttemptAt <= SYSUTCDATETIME() AND Attempts < @Max
                     ORDER BY CreatedAt)
                   UPDATE next SET Status = 'sending', Attempts = Attempts + 1
-                  OUTPUT inserted.EmailId, inserted.ToEmail, inserted.Subject, inserted.Body, inserted.Attempts;", c);
+                  OUTPUT inserted.EmailId, inserted.ToEmail, inserted.Subject, inserted.Body, inserted.Attempts, inserted.Template, inserted.DedupeKey;", c);
             cmd.Parameters.AddWithValue("@Max", maxAttempts);
             using var r = await cmd.ExecuteReaderAsync(ct);
             return await r.ReadAsync(ct)
-                ? new OutboxEmail(r.GetGuid(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetInt32(4))
+                ? new OutboxEmail(r.GetGuid(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetInt32(4), r.GetString(5), r.GetString(6))
                 : null;
         }
 
@@ -92,6 +109,46 @@ namespace LayoutParserApi.Services.Database
             using var c = await OpenAsync(ct);
             using var cmd = new SqlCommand("SELECT COUNT(*) FROM dbo.tbLpEmailOutbox WHERE Status='sent' AND SentAt > DATEADD(HOUR,-24,SYSUTCDATETIME());", c);
             return (int)(await cmd.ExecuteScalarAsync(ct))!;
+        }
+
+        // 'sending' é transitório: para o rastreio conta como pending.
+        private const string StatusNormalizado = "CASE WHEN Status = 'sending' THEN 'pending' ELSE Status END";
+
+        public async Task<IReadOnlyList<OutboxEmailStatus>> ListAsync(string dedupeKey, string? toEmail, int skip, int take, CancellationToken ct)
+        {
+            using var c = await OpenAsync(ct);
+            using var cmd = new SqlCommand(
+                $@"SELECT EmailId, ToEmail, Template, {StatusNormalizado}, Attempts, CreatedAt, NextAttemptAt, SentAt, LastError
+                   FROM dbo.tbLpEmailOutbox
+                   WHERE (DedupeKey = @Key OR DedupeKey LIKE @Key + ':resend:%') AND (@To IS NULL OR ToEmail = @To)
+                   ORDER BY CreatedAt DESC
+                   OFFSET @Skip ROWS FETCH NEXT @Take ROWS ONLY;", c);
+            cmd.Parameters.AddWithValue("@Key", dedupeKey);
+            cmd.Parameters.AddWithValue("@To", (object?)toEmail ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@Skip", skip);
+            cmd.Parameters.AddWithValue("@Take", take);
+            var list = new List<OutboxEmailStatus>();
+            using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                list.Add(new OutboxEmailStatus(r.GetGuid(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetInt32(4),
+                    r.GetDateTime(5), r.IsDBNull(6) ? null : r.GetDateTime(6), r.IsDBNull(7) ? null : r.GetDateTime(7),
+                    r.IsDBNull(8) ? null : r.GetString(8)));
+            return list;
+        }
+
+        public async Task<IReadOnlyDictionary<string, string>> GetLatestStatusByEmailAsync(string dedupeKey, CancellationToken ct)
+        {
+            using var c = await OpenAsync(ct);
+            using var cmd = new SqlCommand(
+                $@"SELECT ToEmail, {StatusNormalizado} FROM (
+                     SELECT ToEmail, Status, ROW_NUMBER() OVER (PARTITION BY ToEmail ORDER BY CreatedAt DESC) rn
+                     FROM dbo.tbLpEmailOutbox WHERE DedupeKey = @Key OR DedupeKey LIKE @Key + ':resend:%') t WHERE rn = 1;", c);
+            cmd.Parameters.AddWithValue("@Key", dedupeKey);
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                map[r.GetString(0)] = r.GetString(1);
+            return map;
         }
     }
 }

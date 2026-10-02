@@ -45,6 +45,11 @@ namespace LayoutParserApi.Models.Transformation
         /// </summary>
         public string? ErrorMessage { get; set; }
 
+        /// <summary>Código estável do runner HTTP (queue_full, mapper_not_found, transform_failed, timeout,
+        /// runner_unavailable, invalid_request, runtime_error); null para falhas fora do cliente HTTP.
+        /// Não é persistido no índice em disco.</summary>
+        public string? ErrorCode { get; set; }
+
         /// <summary>
         /// Conteúdo decifrado (XML) do mapeador usado nesta transformação. Exposto de volta ao chamador
         /// (<c>TransformationExecutionController.ExecuteSysmiddleCandidatesAsync</c>) para dois usos

@@ -166,7 +166,8 @@ namespace LayoutParserApi.Controllers
                     result = await _pipelineService.TransformTxtToXmlAsync(
                         request.InputContent,
                         request.LayoutName,
-                        request.TargetDocumentType ?? "NFe");
+                        request.TargetDocumentType ?? "NFe",
+                        request.CatalogId);
                 }
 
                 if (result.Success)
@@ -839,6 +840,7 @@ namespace LayoutParserApi.Controllers
 
                 var anyCandidateFailed = false;
                 string lastCandidateFailureMessage = null;
+                string lastCandidateFailureCode = null;
                 foreach (var c in autoResult.Candidates)
                 {
                     if (c.Success && !string.IsNullOrEmpty(c.OutputXml))
@@ -869,6 +871,7 @@ namespace LayoutParserApi.Controllers
                         var sanitizedCandidateError = LowCodeErrorSanitizer.ForWire(c.ErrorMessage ?? "erro desconhecido");
                         anyCandidateFailed = true;
                         lastCandidateFailureMessage = sanitizedCandidateError;
+                        lastCandidateFailureCode = c.ErrorCode ?? lastCandidateFailureCode;
                         warnings.Add($"Candidato {c.MapperGuid} (pathway sysmiddle) falhou: {sanitizedCandidateError}");
                         failureKinds.Add(FailureKind.ExecutionInfraError);
                     }
@@ -893,12 +896,14 @@ namespace LayoutParserApi.Controllers
                     // falharam na execução — infra/runner, não gap de cobertura (§4.3 "runner_unavailable").
                     _logger.LogWarning(
                         "PathwayDiagnostic {CorrelationId}: pathway={Pathway} status={Status} code={Code} layout={LayoutName} layoutGuid={LayoutGuid} fonte=execução do runner (mapper existe, execução falhou)",
-                        Services.Logging.CorrelationContext.CurrentId, "sysmiddle", "failed", "runner_unavailable", safeLayoutName, safeResolvedLayoutGuid);
+                        Services.Logging.CorrelationContext.CurrentId, "sysmiddle", "failed", Models.Transformation.PathwayDiagnostic.ResolveRunnerFailureCode(lastCandidateFailureCode), safeLayoutName, safeResolvedLayoutGuid);
                     pathwayDiagnostics.Add(new Models.Transformation.PathwayDiagnostic
                     {
                         Pathway = "sysmiddle",
                         Status = "failed",
-                        Code = "runner_unavailable",
+                        // Issue #641: código estável do runner HTTP (queue_full, mapper_not_found, ...);
+                        // sem código (falha fora do cliente HTTP) mantém o histórico runner_unavailable.
+                        Code = Models.Transformation.PathwayDiagnostic.ResolveRunnerFailureCode(lastCandidateFailureCode),
                         Message = lastCandidateFailureMessage ?? "Todos os candidatos sysmiddle falharam na execução"
                     });
                 }
@@ -1439,7 +1444,8 @@ namespace LayoutParserApi.Controllers
                     : await _pipelineService.TransformTxtToXmlAsync(
                         request.InputContent,
                         request.LayoutName,
-                        request.TargetDocumentType ?? "NFe");
+                        request.TargetDocumentType ?? "NFe",
+                        request.CatalogId);
 
                 if (!pipelineResult.Success || string.IsNullOrEmpty(pipelineResult.TransformedXml))
                 {

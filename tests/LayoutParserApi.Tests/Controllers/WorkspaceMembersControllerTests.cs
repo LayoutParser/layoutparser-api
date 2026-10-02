@@ -50,11 +50,9 @@ namespace LayoutParserApi.Tests.Controllers
 
             public Task SyncEmailAndRedeemInvitesAsync(Guid userId, string email, CancellationToken cancellationToken) => Task.CompletedTask;
 
+            public List<WorkspaceMemberInfo> Items { get; } = new() { new WorkspaceMemberInfo(Guid.NewGuid(), null, "a@b.com", WorkspaceRole.Viewer, "active", DateTimeOffset.UtcNow) };
             public Task<IReadOnlyList<WorkspaceMemberInfo>> ListAsync(Guid workspaceId, CancellationToken cancellationToken)
-                => Task.FromResult<IReadOnlyList<WorkspaceMemberInfo>>(new[]
-                {
-                    new WorkspaceMemberInfo(Guid.NewGuid(), null, "a@b.com", WorkspaceRole.Viewer, "active", DateTimeOffset.UtcNow)
-                });
+                => Task.FromResult<IReadOnlyList<WorkspaceMemberInfo>>(Items.ToList());
 
             public Task<AddMemberResult> AddAsync(Guid workspaceId, string email, string role, Guid invitedByUserId, CancellationToken cancellationToken)
             {
@@ -81,17 +79,25 @@ namespace LayoutParserApi.Tests.Controllers
         private sealed class FakeOutbox : IEmailOutboxStore
         {
             public List<(string To, string Subject, string Body)> Enqueued { get; } = new();
+            public List<string> Keys { get; } = new();
+            public int Sent { get; set; }
             public bool Throw { get; set; }
-            public Task<bool> EnqueueAsync(string toEmail, string template, string dedupeKey, string subject, string body, CancellationToken cancellationToken)
+            public Task<EnqueueResult> EnqueueAsync(string toEmail, string template, string dedupeKey, string subject, string body, CancellationToken cancellationToken)
             {
                 if (Throw) throw new InvalidOperationException("sql fora");
                 Enqueued.Add((toEmail, subject, body));
-                return Task.FromResult(true);
+                Keys.Add(dedupeKey);
+                return Task.FromResult(new EnqueueResult(true, Guid.NewGuid()));
             }
+            public List<OutboxEmailStatus> Rows { get; } = new();
+            public Task<IReadOnlyList<OutboxEmailStatus>> ListAsync(string dedupeKey, string? toEmail, int skip, int take, CancellationToken cancellationToken)
+                => Task.FromResult<IReadOnlyList<OutboxEmailStatus>>(Rows.Where(r => toEmail == null || r.ToEmail == toEmail).Skip(skip).Take(take).ToList());
+            public Task<IReadOnlyDictionary<string, string>> GetLatestStatusByEmailAsync(string dedupeKey, CancellationToken cancellationToken)
+                => Task.FromResult<IReadOnlyDictionary<string, string>>(Rows.ToDictionary(r => r.ToEmail, r => r.Status));
             public Task<OutboxEmail?> ClaimNextAsync(int maxAttempts, CancellationToken cancellationToken) => Task.FromResult<OutboxEmail?>(null);
             public Task MarkSentAsync(Guid emailId, CancellationToken cancellationToken) => Task.CompletedTask;
             public Task MarkFailedAsync(Guid emailId, string error, int maxAttempts, CancellationToken cancellationToken) => Task.CompletedTask;
-            public Task<int> CountSentLast24hAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+            public Task<int> CountSentLast24hAsync(CancellationToken cancellationToken) => Task.FromResult(Sent);
         }
 
         [Fact]
@@ -117,12 +123,137 @@ namespace LayoutParserApi.Tests.Controllers
         }
 
         [Fact]
-        public async Task Sem_smtp_configurado_nao_enfileira()
+        public async Task Sem_smtp_configurado_ainda_enfileira_para_rastreio()
         {
             var outbox = new FakeOutbox();
             await Create(new FakeMembers(), outbox: outbox, configured: false)
                 .Add(WorkspaceId, new AddWorkspaceMemberRequest("a@b.com", "viewer"), default);
+            Assert.Single(outbox.Enqueued);
+        }
+
+        [Theory]
+        [InlineData("luan.mota0102@gmail.com", "l***@gmail.com")]
+        [InlineData("a@b.com", "a***@b.com")]
+        [InlineData("semarroba", "***")]
+        [InlineData(null, "***")]
+        public void Mascara_destinatario_sem_expor_o_endereco(string? raw, string esperado)
+            => Assert.Equal(esperado, EmailMasking.Mask(raw));
+
+        private static (WorkspaceMemberInfo Pending, FakeMembers Members) PendingMember(string status = "pending")
+        {
+            var m = new WorkspaceMemberInfo(Guid.NewGuid(), null, "novo@b.com", WorkspaceRole.Viewer, status, DateTimeOffset.UtcNow);
+            var fm = new FakeMembers();
+            fm.Items.Add(m);
+            return (m, fm);
+        }
+
+        [Fact]
+        public async Task Reenvio_de_pendente_enfileira_com_dedupeKey_proprio()
+        {
+            var (m, fm) = PendingMember();
+            var outbox = new FakeOutbox();
+            var result = await Create(fm, outbox: outbox, configured: true).ResendInvite(WorkspaceId, m.UserId, default);
+
+            Assert.Equal(202, Assert.IsType<ObjectResult>(result).StatusCode);
+            Assert.Equal("novo@b.com", Assert.Single(outbox.Enqueued).To);
+            var key = Assert.Single(outbox.Keys);
+            Assert.NotEqual(WorkspaceId.ToString("N"), key);
+            Assert.StartsWith(WorkspaceId.ToString("N") + ":resend:", key);
+        }
+
+        [Fact]
+        public async Task Reenvio_para_membro_ativo_retorna_409_member_already_active()
+        {
+            var (m, fm) = PendingMember("active");
+            var result = await Create(fm).ResendInvite(WorkspaceId, m.UserId, default);
+            var obj = Assert.IsType<ConflictObjectResult>(result);
+            Assert.Contains("member_already_active", System.Text.Json.JsonSerializer.Serialize(obj.Value));
+        }
+
+        [Fact]
+        public async Task Reenvio_dentro_do_cooldown_retorna_429_com_retry_after()
+        {
+            var (m, fm) = PendingMember();
+            var outbox = new FakeOutbox();
+            outbox.Rows.Add(new OutboxEmailStatus(Guid.NewGuid(), "novo@b.com", "welcome-v1", "sent", 1, DateTime.UtcNow.AddMinutes(-1), null, null, null));
+            var ctrl = Create(fm, outbox: outbox);
+            ctrl.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+            var result = await ctrl.ResendInvite(WorkspaceId, m.UserId, default);
+
+            var obj = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(429, obj.StatusCode);
+            Assert.Contains("resend_cooldown", System.Text.Json.JsonSerializer.Serialize(obj.Value));
+            Assert.True(int.Parse(ctrl.Response.Headers["Retry-After"].ToString()) > 0);
             Assert.Empty(outbox.Enqueued);
+        }
+
+        [Fact]
+        public async Task Reenvio_apos_o_cooldown_e_aceito()
+        {
+            var (m, fm) = PendingMember();
+            var outbox = new FakeOutbox();
+            outbox.Rows.Add(new OutboxEmailStatus(Guid.NewGuid(), "novo@b.com", "welcome-v1", "sent", 1, DateTime.UtcNow.AddMinutes(-30), null, null, null));
+            var result = await Create(fm, outbox: outbox).ResendInvite(WorkspaceId, m.UserId, default);
+            Assert.Equal(202, Assert.IsType<ObjectResult>(result).StatusCode);
+        }
+
+        [Fact]
+        public async Task Reenvio_com_falha_no_outbox_retorna_503_outbox_busy_com_retry_after()
+        {
+            var (m, fm) = PendingMember();
+            var ctrl = Create(fm, outbox: new FakeOutbox { Throw = true });
+            ctrl.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+            var result = await ctrl.ResendInvite(WorkspaceId, m.UserId, default);
+            var obj = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(503, obj.StatusCode);
+            Assert.Contains("outbox_busy", System.Text.Json.JsonSerializer.Serialize(obj.Value));
+            Assert.True(int.Parse(ctrl.Response.Headers["Retry-After"].ToString()) > 0);
+        }
+
+        [Fact]
+        public async Task Reenvio_com_teto_diario_atingido_retorna_429_daily_limit()
+        {
+            var (m, fm) = PendingMember();
+            var result = await Create(fm, outbox: new FakeOutbox { Sent = 400 }).ResendInvite(WorkspaceId, m.UserId, default);
+            var obj = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(429, obj.StatusCode);
+            Assert.Contains("daily_limit", System.Text.Json.JsonSerializer.Serialize(obj.Value));
+        }
+
+        [Fact]
+        public async Task Reenvio_de_membro_inexistente_ou_de_outro_workspace_retorna_404()
+        {
+            var result = await Create(new FakeMembers()).ResendInvite(WorkspaceId, Guid.NewGuid(), default);
+            Assert.IsType<NotFoundObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task Reenvio_por_nao_membro_do_workspace_retorna_404()
+        {
+            var (m, fm) = PendingMember();
+            var result = await Create(fm, new FakeWorkspaces { IsMember = false }).ResendInvite(WorkspaceId, m.UserId, default);
+            Assert.IsType<NotFoundObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task Reenvio_sem_smtp_informa_smtpConfigured_false()
+        {
+            var (m, fm) = PendingMember();
+            var result = await Create(fm, configured: false).ResendInvite(WorkspaceId, m.UserId, default);
+            var obj = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(202, obj.StatusCode);
+            var json = System.Text.Json.JsonSerializer.Serialize(obj.Value);
+            Assert.Contains("\"smtpConfigured\":false", json);
+            Assert.Contains("\"enqueued\":true", json);
+        }
+
+        [Fact]
+        public void Reenvio_exige_papel_de_admin_e_auditoria()
+        {
+            var method = typeof(WorkspaceMembersController).GetMethod(nameof(WorkspaceMembersController.ResendInvite))!;
+            Assert.NotNull(method.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.ServiceFilterAttribute), false).FirstOrDefault());
+            Assert.NotNull(typeof(WorkspaceMembersController).GetCustomAttributes(typeof(LayoutParserApi.Services.Filters.RequireWorkspaceRoleAttribute), false).FirstOrDefault());
         }
 
         private static WorkspaceMembersController Create(FakeMembers members, FakeWorkspaces? workspaces = null, FakeOutbox? outbox = null, bool configured = false)

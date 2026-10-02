@@ -3,6 +3,14 @@ namespace LayoutParserApi.Services.Transformation.LowCode
     public class LowCodeRunnerOptions
     {
         public string RunnerPath { get; set; } = "";
+
+        // ✅ Runner como serviço HTTP (contrato v1, issue #641). Preenchida => o caminho HTTP substitui
+        // o .exe (RunnerPath passa a ser ignorado). Vazia => comportamento legado com RunnerPath.
+        // Exemplo: http://lowcoderunner.local:5230
+        public string BaseUrl { get; set; } = "";
+
+        // Timeout do HttpClient do runner: folga sobre os 180s de execução do servidor.
+        public int HttpTimeoutSeconds { get; set; } = 200;
         public string SysmiddleDir { get; set; } = "";
         public string GlobalFolder { get; set; } = "";
         // ✅ Identificador do PROJETO Sysmiddle (o mesmo <PackageMappers> do config.xml da instância).
@@ -95,6 +103,7 @@ namespace LayoutParserApi.Services.Transformation.LowCode
         // segundos depois) sem congelar para sempre um resultado de um mapper que pode ter mudado.
         // Mesmo aviso do campo acima: override só por LowCode__TransformationCacheTtlHours.
         public int TransformationCacheTtlHours { get; set; } = 2;
+
     }
 }
 

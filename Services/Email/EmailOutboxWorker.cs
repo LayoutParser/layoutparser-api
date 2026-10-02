@@ -25,7 +25,7 @@ namespace LayoutParserApi.Services.Email
         {
             if (!_sender.IsConfigured)
             {
-                _logger.LogInformation("Envio de e-mail desativado (Email:Smtp não configurado).");
+                _logger.LogWarning("Envio de e-mail DESATIVADO (Email:Smtp não configurado): e-mails ficam em status pending no outbox e NÃO serão enviados até configurar o SMTP e reiniciar.");
                 return;
             }
 
@@ -50,6 +50,9 @@ namespace LayoutParserApi.Services.Email
             var store = scope.ServiceProvider.GetRequiredService<IEmailOutboxStore>();
 
             var sentToday = await store.CountSentLast24hAsync(ct);
+            if (sentToday >= _options.DailyLimit)
+                _logger.LogWarning("Teto diário de e-mails atingido ({Sent}/{Limit}); envios pendentes aguardam a janela de 24h.", sentToday, _options.DailyLimit);
+
             while (sentToday < _options.DailyLimit && await store.ClaimNextAsync(_options.MaxAttempts, ct) is { } email)
             {
                 try
@@ -57,10 +60,13 @@ namespace LayoutParserApi.Services.Email
                     await _sender.SendAsync(new EmailMessage(email.ToEmail, email.Subject, email.Body), ct);
                     await store.MarkSentAsync(email.EmailId, ct);
                     sentToday++;
+                    _logger.LogInformation("E-mail {EmailId} enviado (Template={Template}, WorkspaceId={WorkspaceId}, Tentativa={Attempts})",
+                        email.EmailId, email.Template, email.DedupeKey, email.Attempts);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogWarning("Falha ao enviar e-mail {EmailId} (tentativa {Attempts}): {Error}", email.EmailId, email.Attempts, ex.GetType().Name);
+                    _logger.LogWarning("Falha ao enviar e-mail {EmailId} (Template={Template}, WorkspaceId={WorkspaceId}, Tentativa={Attempts}): {Error}",
+                        email.EmailId, email.Template, email.DedupeKey, email.Attempts, ex.GetType().Name);
                     await store.MarkFailedAsync(email.EmailId, ex.GetType().Name, _options.MaxAttempts, ct);
                 }
             }
