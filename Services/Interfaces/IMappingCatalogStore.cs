@@ -34,5 +34,28 @@ namespace LayoutParserApi.Services.Interfaces
 
         /// <summary>Lê um item por <c>CatalogId</c> (inclusive retirado), ou null.</summary>
         Task<MappingCatalogItemDto?> GetItemAsync(Guid catalogId, CancellationToken cancellationToken);
+
+        // ---- Leituras do índice (issue #631) — distinguem "vazio" de "indisponível" via CatalogReadResult ----
+
+        /// <summary>Linhas de <c>tbMappingCatalogSource</c> com contagens de pastas/itens ativos.</summary>
+        Task<CatalogReadResult<IReadOnlyList<MappingCatalogSourceSummary>>> ListSourcesAsync(CancellationToken cancellationToken);
+
+        /// <summary>Estado de uma origem (null se nunca sincronizada).</summary>
+        Task<CatalogReadResult<MappingCatalogSourceDto?>> GetSourceAsync(SourceSystem sourceSystem, CancellationToken cancellationToken);
+
+        /// <summary>Pastas ativas da origem, ordem <c>NameSort, FolderId</c>. <paramref name="skip"/>/<paramref name="take"/> por offset.</summary>
+        Task<CatalogReadResult<MappingCatalogPage<MappingCatalogFolderDto>>> ListFoldersAsync(SourceSystem sourceSystem, int skip, int take, CancellationToken cancellationToken);
+
+        Task<CatalogReadResult<MappingCatalogFolderDto?>> GetFolderAsync(Guid folderId, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Itens da pasta, ordem <c>NameSort, CatalogId</c> (total e estável). <paramref name="engine"/> filtra por motor;
+        /// <paramref name="nameQuery"/> é busca por trecho no nome (case/acento-insensível); retirados só com <paramref name="includeRetired"/>.
+        /// </summary>
+        Task<CatalogReadResult<MappingCatalogPage<MappingCatalogItemDto>>> ListItemsAsync(
+            Guid folderId, string? engine, string? nameQuery, bool includeRetired, int skip, int take, CancellationToken cancellationToken);
+
+        /// <summary>Como <see cref="GetItemAsync"/>, mas distingue "não existe" de "indisponível".</summary>
+        Task<CatalogReadResult<MappingCatalogItemDto?>> FindItemAsync(Guid catalogId, CancellationToken cancellationToken);
     }
 }
