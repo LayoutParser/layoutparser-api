@@ -1,5 +1,6 @@
 using System.Text.Json;
 
+using LayoutParserApi.Services.Catalog;
 using LayoutParserApi.Services.Interfaces;
 
 namespace LayoutParserApi.Services.Transformation.Ai
@@ -8,6 +9,7 @@ namespace LayoutParserApi.Services.Transformation.Ai
     /// <param name="MapperName">Nome legível do catálogo Sysmiddle (<c>MAP_...</c>); <c>null</c> se o catálogo estiver indisponível/não resolver.</param>
     /// <param name="Status"><c>ready</c> ou <c>generating</c> (status persistido; <c>stale</c> só é calculado no detalhe).</param>
     /// <param name="ValidationBasis">Sempre <c>declared_dsl</c> quando há candidato — cobertura contra o DSL declarado, nunca execução real.</param>
+    /// <param name="CatalogId">Issue #634: <c>catalogId</c> do item no catálogo unificado; <c>null</c> enquanto o índice não tiver o item (campo omitido na API).</param>
     /// <param name="Coverage">Cobertura já desserializada (era string JSON opaca); <c>null</c> se ainda não gerado/JSON inválido.</param>
     public sealed record GeneratedMapperListItem(
         string MapperGuid,
@@ -16,7 +18,8 @@ namespace LayoutParserApi.Services.Transformation.Ai
         string? ValidationBasis,
         JsonElement? Coverage,
         DateTimeOffset? GeneratedAt,
-        string? CorrelationId);
+        string? CorrelationId,
+        Guid? CatalogId = null);
 
     /// <summary>Página de auto-gerados. <see cref="Available"/> = false quando o store falhou (degradação).</summary>
     public sealed record GeneratedMapperListPage(IReadOnlyList<GeneratedMapperListItem> Items, int TotalCount, bool Available)
@@ -49,12 +52,15 @@ namespace LayoutParserApi.Services.Transformation.Ai
         private readonly IGeneratedMapperArtifactStore _store;
         private readonly ICachedMapperService _mapperService;
         private readonly ILogger<GeneratedMapperListService> _logger;
+        private readonly IMappingCatalogStore? _catalogStore;
 
         public GeneratedMapperListService(
             IGeneratedMapperArtifactStore store,
             ICachedMapperService mapperService,
-            ILogger<GeneratedMapperListService> logger)
+            ILogger<GeneratedMapperListService> logger,
+            IMappingCatalogStore? catalogStore = null)
         {
+            _catalogStore = catalogStore;
             _store = store;
             _mapperService = mapperService;
             _logger = logger;
@@ -86,16 +92,49 @@ namespace LayoutParserApi.Services.Transformation.Ai
                 ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 : await ResolveNamesAsync();
 
-            var items = records.Select(r => new GeneratedMapperListItem(
-                r.MapperGuid,
-                names.TryGetValue(r.MapperGuid, out var name) ? name : null,
-                r.Status,
-                r.ValidationBasis,
-                ParseCoverage(r.CoverageJson),
-                r.GeneratedAt,
-                r.CorrelationId)).ToList();
+            var indexed = await ResolveIndexedCatalogIdsAsync(records, cancellationToken);
+
+            var items = records.Select(r =>
+            {
+                var catalogId = OwnArtifactCatalogSource.CatalogIdFor(r.MapperGuid, r.ProjectId);
+                return new GeneratedMapperListItem(
+                    r.MapperGuid,
+                    names.TryGetValue(r.MapperGuid, out var name) ? name : null,
+                    r.Status,
+                    r.ValidationBasis,
+                    ParseCoverage(r.CoverageJson),
+                    r.GeneratedAt,
+                    r.CorrelationId,
+                    indexed.Contains(catalogId) ? catalogId : null);
+            }).ToList();
 
             return new GeneratedMapperListPage(items, total, true);
+        }
+
+        /// <summary>
+        /// Quais <c>catalogId</c> (calculados de forma determinística) já existem no índice do catálogo (issue #634).
+        /// Falha ou índice ausente => conjunto vazio (campos aditivos omitidos; a listagem nunca quebra por isso).
+        /// </summary>
+        private async Task<HashSet<Guid>> ResolveIndexedCatalogIdsAsync(IReadOnlyList<GeneratedMapperArtifactRecord> records, CancellationToken cancellationToken)
+        {
+            var none = new HashSet<Guid>();
+            if (_catalogStore is null || records.Count == 0)
+                return none;
+            try
+            {
+                var ids = records.Select(r => OwnArtifactCatalogSource.CatalogIdFor(r.MapperGuid, r.ProjectId)).Distinct().ToList();
+                var found = await _catalogStore.FindExistingItemIdsAsync(ids, cancellationToken);
+                return found.Available && found.Value is not null ? found.Value.ToHashSet() : none;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Índice do catálogo indisponível ao resolver catalogId da listagem unificada — campos catalogId omitidos.");
+                return none;
+            }
         }
 
         /// <summary>

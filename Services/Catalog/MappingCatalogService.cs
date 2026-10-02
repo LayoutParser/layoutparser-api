@@ -23,6 +23,12 @@ namespace LayoutParserApi.Services.Catalog
         Task<CatalogResult<MappingCatalogListResponse<MappingCatalogItemView>>> ListItemsAsync(Guid folderId, string? engine, string? q, bool includeRetired, int page, int pageSize, CancellationToken ct);
         Task<CatalogResult<MappingCatalogItemView>> GetItemAsync(Guid catalogId, CancellationToken ct);
         Task<CatalogResult<MappingCatalogContentResponse>> GetContentAsync(Guid catalogId, CancellationToken ct);
+
+        /// <summary>
+        /// Itens ativos do catálogo cujo ponteiro de origem casa com <paramref name="mapperGuid"/> (issue #634, design D6).
+        /// Mais de um => <c>mapperGuid</c> ambíguo; a rota antiga responde 409 com estes candidatos em vez de escolher um.
+        /// </summary>
+        Task<CatalogResult<IReadOnlyList<MappingCatalogItemView>>> FindByMapperGuidAsync(string mapperGuid, CancellationToken ct);
     }
 
     public sealed class MappingCatalogService : IMappingCatalogService
@@ -138,6 +144,22 @@ namespace LayoutParserApi.Services.Catalog
                 _logger.LogWarning(ex, "Falha ao buscar conteúdo na origem {SourceSystem} para o item {CatalogId}.", item.Value.SourceSystem.ToWireName(), catalogId);
                 return CatalogResult<MappingCatalogContentResponse>.Unavailable("Origem indisponível para leitura do conteúdo.");
             }
+        }
+
+        public async Task<CatalogResult<IReadOnlyList<MappingCatalogItemView>>> FindByMapperGuidAsync(string mapperGuid, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(mapperGuid))
+                return CatalogResult<IReadOnlyList<MappingCatalogItemView>>.Ok(Array.Empty<MappingCatalogItemView>());
+            var found = await _store.FindItemsByMapperGuidAsync(mapperGuid.Trim(), ct);
+            if (!found.Available)
+                return CatalogResult<IReadOnlyList<MappingCatalogItemView>>.Unavailable(StoreDown);
+            var views = new List<MappingCatalogItemView>();
+            foreach (var item in found.Value!)
+            {
+                var folder = await _store.GetFolderAsync(item.FolderId, ct);
+                views.Add(ToView(item, folder.Available ? folder.Value : null, null));
+            }
+            return CatalogResult<IReadOnlyList<MappingCatalogItemView>>.Ok(views);
         }
 
         private async Task<string> StatusOfAsync(SourceSystem system, CancellationToken ct)

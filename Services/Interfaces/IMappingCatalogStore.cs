@@ -58,6 +58,33 @@ namespace LayoutParserApi.Services.Interfaces
         /// <summary>Como <see cref="GetItemAsync"/>, mas distingue "não existe" de "indisponível".</summary>
         Task<CatalogReadResult<MappingCatalogItemDto?>> FindItemAsync(Guid catalogId, CancellationToken cancellationToken);
 
+        // ---- Issue #634 (defaults retrocompatíveis; o store SQL sobrescreve) ----
+
+        /// <summary>
+        /// Dos <paramref name="catalogIds"/> informados, quais existem no índice (inclusive retirados). Usado para só
+        /// anunciar <c>catalogId</c> em <c>mapping-releases</c> quando o item já foi indexado.
+        /// </summary>
+        async Task<CatalogReadResult<IReadOnlyCollection<Guid>>> FindExistingItemIdsAsync(IReadOnlyCollection<Guid> catalogIds, CancellationToken cancellationToken)
+        {
+            var found = new List<Guid>();
+            foreach (var id in catalogIds)
+            {
+                var item = await FindItemAsync(id, cancellationToken);
+                if (!item.Available)
+                    return CatalogReadResult<IReadOnlyCollection<Guid>>.Unavailable();
+                if (item.Value != null)
+                    found.Add(id);
+            }
+            return CatalogReadResult<IReadOnlyCollection<Guid>>.Ok(found);
+        }
+
+        /// <summary>
+        /// Itens ATIVOS cujo ponteiro de origem (<c>SourceRefJson.mapperGuid</c>) casa com o <c>mapperGuid</c> informado —
+        /// base do 409 de ambiguidade da rota antiga por <c>mapperGuid</c> (design D6). O padrão não conhece o campo.
+        /// </summary>
+        Task<CatalogReadResult<IReadOnlyList<MappingCatalogItemDto>>> FindItemsByMapperGuidAsync(string mapperGuid, CancellationToken cancellationToken)
+            => Task.FromResult(CatalogReadResult<IReadOnlyList<MappingCatalogItemDto>>.Ok(Array.Empty<MappingCatalogItemDto>()));
+
         // ---- Suporte ao sync (issue #632) ----
 
         /// <summary>Hora UTC do SERVIDOR SQL (mesmo relógio de <c>LastSeenUtc</c>); null se indisponível. Base do corte do RetireUnseen.</summary>

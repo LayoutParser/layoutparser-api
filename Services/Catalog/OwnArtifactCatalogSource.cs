@@ -28,6 +28,14 @@ namespace LayoutParserApi.Services.Catalog
 
         public SourceSystem System => SourceSystem.Own;
 
+        /// <summary>
+        /// <c>catalogId</c> de um artefato próprio (issue #634): linha legada (ProjectId nulo/vazio) usa a pasta "-";
+        /// com projeto, a chave do projeto. Mesma regra de <see cref="ReadAsync"/> — fonte única do cálculo.
+        /// </summary>
+        public static Guid CatalogIdFor(string mapperGuid, string? projectId)
+            => CatalogIdGenerator.ForItem(SourceSystem.Own,
+                string.IsNullOrWhiteSpace(projectId) ? CatalogIdGenerator.NoProjectKey : projectId.Trim(), mapperGuid);
+
         public async Task<MappingCatalogSnapshot> ReadAsync(CancellationToken cancellationToken)
         {
             // Issue #635: linha legada (ProjectId nulo) segue na pasta "Sem projeto" com o MESMO catalogId de
