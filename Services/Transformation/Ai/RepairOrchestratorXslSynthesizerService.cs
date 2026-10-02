@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using System.Diagnostics;
 using System.Xml.Linq;
 
@@ -50,7 +51,8 @@ namespace LayoutParserApi.Services.Transformation.Ai
             IOptions<OllamaOptions> ollamaOptions,
             IConfiguration configuration,
             TrainingDataCaptureService trainingDataCapture,
-            IRetrainingLock? retrainingLock = null)
+            IRetrainingLock? retrainingLock = null,
+            StoragePaths? storagePaths = null)
         {
             _logger = logger;
             _mapperService = mapperService;
@@ -58,11 +60,11 @@ namespace LayoutParserApi.Services.Transformation.Ai
             _ollamaOptions = ollamaOptions.Value;
             _trainingDataCapture = trainingDataCapture;
             _retrainingLock = retrainingLock;
-            _xsdBasePath = configuration["XsdValidation:BasePath"] ?? @"C:\inetpub\wwwroot\layoutparser\xsd";
+            _xsdBasePath = (storagePaths ?? new StoragePaths(configuration)).Xsd;
             // Mesma convenção de TransformationPipelineService/AutoTransformationGeneratorService —
             // {mapperName}_{layoutName}.xsl (issue #55) — pra persistir o XSLT sintetizado no lugar
             // que o pathway tcl-xsl já sabe ler.
-            _xslBasePath = configuration["TransformationPipeline:XslPath"] ?? @"C:\inetpub\wwwroot\layoutparser\XSL";
+            _xslBasePath = (storagePaths ?? new StoragePaths(configuration)).Xsl;
         }
 
         public async Task<XslSynthesisResult> SynthesizeAsync(

@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
@@ -36,8 +37,7 @@ namespace LayoutParserApi.Services.Fiscal
             _antivirusScanner = antivirusScanner;
             _ruleExtractor = ruleExtractor;
             _logger = logger;
-            _storePath = configuration["ML:FiscalMappingPackagesPath"]
-                ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MLData", "FiscalMappingPackages");
+            _storePath = new StoragePaths(configuration).FiscalMappingPackages;
             // ✅ issue #424: lista configurável de colunas obrigatórias (default vazio — ver FiscalSpecQualityAnalyzer).
             _requiredRuleSheetColumns = configuration.GetSection(FiscalSpecQualityAnalyzer.RequiredColumnsConfigKey)
                 .Get<string[]>()?.Where(c => !string.IsNullOrWhiteSpace(c)).ToList()

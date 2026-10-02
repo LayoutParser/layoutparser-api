@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using System.Xml.Linq;
 
 using LayoutParserApi.Services.Logging;
@@ -21,14 +22,16 @@ namespace LayoutParserApi.Services.Transformation
 
         public TransformationLearningService(
             ILogger<TransformationLearningService> logger,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            StoragePaths? storagePaths = null)
         {
+            var paths = storagePaths ?? new StoragePaths(configuration);
             _logger = logger;
             _configuration = configuration;
-            _examplesBasePath = configuration["TransformationPipeline:ExamplesPath"] ?? @"C:\inetpub\wwwroot\layoutparser\Exemplo";
-            _examplesTclPath = configuration["TransformationPipeline:ExamplesTclPath"] ?? @"C:\inetpub\wwwroot\layoutparser\Examples\tcl";
-            _examplesXslPath = configuration["TransformationPipeline:ExamplesXslPath"] ?? @"C:\inetpub\wwwroot\layoutparser\Examples\xsl";
-            _learningModelsPath = configuration["TransformationPipeline:LearningModelsPath"] ?? @"C:\inetpub\wwwroot\layoutparser\LearningModels";
+            _examplesBasePath = paths.Examples;
+            _examplesTclPath = paths.ExamplesTcl;
+            _examplesXslPath = paths.ExamplesXsl;
+            _learningModelsPath = paths.LearningModels;
 
             Directory.CreateDirectory(_examplesBasePath);
             Directory.CreateDirectory(_examplesTclPath);

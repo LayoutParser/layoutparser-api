@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using Microsoft.Extensions.Options;
 
 namespace LayoutParserApi.Services.Transformation.Ai.Retraining
@@ -33,8 +34,7 @@ namespace LayoutParserApi.Services.Transformation.Ai.Retraining
         {
             _logger = logger;
 
-            var trainingDataPath = configuration["XslSynth:TrainingDataPath"]
-                ?? Path.Combine(AppContext.BaseDirectory, "ai", "XslSynth", "training-data");
+            var trainingDataPath = new StoragePaths(configuration).AiTrainingData;
 
             LockFilePath = !string.IsNullOrWhiteSpace(options.Value.LockFilePath)
                 ? options.Value.LockFilePath!

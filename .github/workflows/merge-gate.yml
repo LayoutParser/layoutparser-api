@@ -11,7 +11,7 @@ name: Merge Gate (master)
 #
 # ESCOPO: apenas leitura de metadados do PR (github.head_ref). Sem checkout, sem build, sem
 # segredo, sem tocar o runner de producao. Roda em runner hospedado (ubuntu-latest).
-# Se a org tiver runner hospedado desabilitado, troque runs-on por [self-hosted, windows, dev-local].
+# Se a org tiver runner hospedado desabilitado, e preciso um runner self-hosted dedicado (nao o host de producao).
 
 on:
   pull_request:

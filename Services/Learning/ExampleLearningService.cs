@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using LayoutParserApi.Services.Learning.Models;
 using LayoutParserApi.Services.Transformation;
 using LayoutParserApi.Services.Transformation.Models;
@@ -13,11 +14,11 @@ namespace LayoutParserApi.Services.Learning
         private readonly TransformationLearningService _learningService;
         private readonly string _examplesBasePath;
 
-        public ExampleLearningService(ILogger<ExampleLearningService> logger,TransformationLearningService learningService,IConfiguration configuration)
+        public ExampleLearningService(ILogger<ExampleLearningService> logger,TransformationLearningService learningService,IConfiguration configuration, StoragePaths? storagePaths = null)
         {
             _logger = logger;
             _learningService = learningService;
-            _examplesBasePath = configuration["TransformationPipeline:LearningExamplesPath"] ?? @"C:\Users\Elson\source\repos\ExemplosDeXSLeTCL";
+            _examplesBasePath = (storagePaths ?? new StoragePaths(configuration)).LearningExamples;
 
             if (!Directory.Exists(_examplesBasePath))
                 _logger.LogWarning("Diretório de exemplos de aprendizado não encontrado: {Path}", _examplesBasePath);

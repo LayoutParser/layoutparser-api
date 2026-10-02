@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using LayoutParserApi.Models.Database;
 using LayoutParserApi.Services.Database;
 using LayoutParserApi.Services.Interfaces;
@@ -30,7 +31,8 @@ namespace LayoutParserApi.Services.Testing
             TransformationPipelineService pipelineService,
             TransformationValidatorService validatorService,
             XmlDocumentTypeDetector documentTypeDetector,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            StoragePaths? storagePaths = null)
         {
             _logger = logger;
             _cachedLayoutService = cachedLayoutService;
@@ -38,8 +40,8 @@ namespace LayoutParserApi.Services.Testing
             _pipelineService = pipelineService;
             _validatorService = validatorService;
             _documentTypeDetector = documentTypeDetector;
-            _examplesBasePath = configuration["Examples:Path"] ?? @"C:\inetpub\wwwroot\layoutparser\Exemplo";
-            _expectedOutputsPath = configuration["TransformationPipeline:ExpectedOutputsPath"] ?? @"C:\inetpub\wwwroot\layoutparser\ExpectedOutputs";
+            _examplesBasePath = (storagePaths ?? new StoragePaths(configuration)).TestExamples;
+            _expectedOutputsPath = (storagePaths ?? new StoragePaths(configuration)).ExpectedOutputs;
 
             Directory.CreateDirectory(_expectedOutputsPath);
         }

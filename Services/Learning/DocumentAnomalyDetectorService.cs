@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using LayoutParserApi.Models.Configuration;
 using LayoutParserApi.Services.Interfaces;
 using LayoutParserApi.Services.Learning.Models;
@@ -52,8 +53,7 @@ namespace LayoutParserApi.Services.Learning
         {
             _logger = logger;
             // Mesmo path (e mesmo default) usado pelo DocumentMLValidationService ao gravar os padrões
-            _learningDataPath = configuration["ML:LearningDataPath"]
-                ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MLData", "DocumentPatterns");
+            _learningDataPath = new StoragePaths(configuration).LearningData;
         }
 
         /// <inheritdoc />

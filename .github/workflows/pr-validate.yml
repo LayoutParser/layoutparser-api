@@ -1,22 +1,25 @@
 name: PR Validate (LayoutParserApi)
 
-# Gate de build/teste para PRs contra develop, de QUALQUER branch de origem.
+# Gate de build/teste para PRs contra develop e master (fluxo real: develop -> master), de QUALQUER branch de origem.
 #
 # Por que este workflow existe separado do ci-dev.yml: ci-dev.yml, alem de compilar/testar,
-# TAMBEM FAZ DEPLOY (para/inicia o servico Windows nativo, sobrescreve os binarios em
-# DEPLOY_PATH_DEV, escreve o Environment do servico no registro). Rodar isso em todo
+# TAMBEM FAZ DEPLOY (historico). Rodar deploy em todo
 # pull_request seria perigoso e sem sentido - uma PR ainda nao mergeada nao deve parar/reiniciar
 # o servico de dev nem escrever no destino do deploy. Este workflow cobre so o gate funcional
 # (build + testes), sem tocar em servico/deploy - resolve a issue #122 sem herdar o risco de
 # rodar deploy em pull_request.
 #
-# Roda no MESMO runner de dev (label 'dev-local') porque e a unica maquina com o .NET Framework
-# 4.8.1 necessario para compilar o Decrypt - nao ha runner hospedado equivalente.
+# Roda em runner GITHUB-HOSTED (ubuntu-latest), de proposito: este ambiente (host Linux self-hosted)
+# E producao. Validar PR (build, testes, gate SCS, oasdiff) executa codigo ainda nao revisado e
+# NAO deve rodar no host de producao. Aqui nao ha deploy, nem segredos, nem acesso a rede interna.
+# Repo publico: minutos de Actions gratis. Deploy continua restrito aos workflows *-linux.yml.
+# Nao depende do .NET Framework 4.8.1 / Decrypt (a API nao compila contra ele).
 
 on:
   pull_request:
     branches:
       - develop
+      - master
 
 # Minimo necessario: checkout deste repo + LayoutParserDecrypt (via
 # GH_PAT_TOKEN, fora do escopo do GITHUB_TOKEN) - nenhum step comenta PR, cria release ou
@@ -45,351 +48,144 @@ concurrency:
 
 jobs:
   build-and-test:
-    runs-on: [self-hosted, windows, dev-local]
+    # Nome do job = contexto do check ('build'), compativel com o check das PRs antigas.
+    name: build
+    # Nunca executar codigo de fork (PR de fork nao recebe secrets e o codigo
+    # nao e confiavel). Dependabot abre branch no proprio repo: roda com token read-only, sem secrets.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
     - name: Checkout LayoutParserApi
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      uses: actions/checkout@v7
       with:
         path: LayoutParserApi
 
-    # Mesmo gate de encoding do ci-dev.yml - protege contra o defeito documentado la
-    # (acento/travessao em comentario de workflow quebra o parser do PowerShell 5.1 sem BOM).
-    - name: Validar encoding dos workflows (ASCII puro)
-      run: |
-        $ErrorActionPreference = "Stop"
-        $raiz = Join-Path $PWD.Path "LayoutParserApi\.github\workflows"
-        $problemas = 0
-
-        foreach ($wf in (Get-ChildItem $raiz -Filter *.yml -ErrorAction SilentlyContinue)) {
-          $linhas = Get-Content $wf.FullName
-          for ($i = 0; $i -lt $linhas.Count; $i++) {
-            $ruins = $linhas[$i].ToCharArray() | Where-Object { [int]$_ -gt 127 }
-            if ($ruins) {
-              $codigos = ($ruins | ForEach-Object { "U+{0:X4}" -f [int]$_ }) -join ' '
-              Write-Host "  $($wf.Name):$($i + 1)  $codigos"
-              Write-Host "      $($linhas[$i].Trim())"
-              $problemas++
-            }
-          }
-        }
-
-        if ($problemas -gt 0) {
-          Write-Error ("$problemas linha(s) com caractere nao-ASCII em workflow. " +
-            "O PowerShell do runner le o bloco run: como ANSI e isso QUEBRA o deploy de producao. " +
-            "Troque por equivalente ASCII (- em vez de travessao, [ATENCAO] em vez de emoji, sem acentos).")
-          exit 1
-        }
-
-        Write-Host "Workflows em ASCII puro - seguro para o PowerShell do runner."
-
-    - name: Checkout LayoutParserDecrypt
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        repository: LayoutParser/layoutparser-decrypt
-        path: layoutparser-decrypt
-        token: ${{ secrets.GH_PAT_TOKEN || secrets.GITHUB_TOKEN }}
-        fetch-depth: 1
-
     - name: Setup .NET
-      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      uses: actions/setup-dotnet@v6
       with:
         dotnet-version: '10.0.x'
 
     - name: Build LayoutParserApi (Release)
       run: |
-        $API_PROJECT = Join-Path $PWD.Path "LayoutParserApi\LayoutParserApi.csproj"
+        set -euo pipefail
+        dotnet restore LayoutParserApi/LayoutParserApi.csproj
+        dotnet build LayoutParserApi/LayoutParserApi.csproj --configuration Release --no-restore 2>&1 | tee scs-build.log
 
-        if (-not (Test-Path $API_PROJECT)) {
-          Write-Error "Projeto nao encontrado: $API_PROJECT"
-          exit 1
-        }
-
-        dotnet restore "$API_PROJECT"
-        if ($LASTEXITCODE -ne 0) {
-          Write-Error "Falha no restore do LayoutParserApi"
-          exit 1
-        }
-
-        $BUILD_LOG = Join-Path $PWD.Path "scs-build.log"
-        dotnet build "$API_PROJECT" --configuration Release --no-restore | Tee-Object -FilePath $BUILD_LOG
-        if ($LASTEXITCODE -ne 0) {
-          Write-Error "Falha ao compilar LayoutParserApi"
-          exit 1
-        }
-
-        Write-Host "LayoutParserApi compilada com sucesso (Release)"
-
-    # Mesmo gate de SAST do ci-dev.yml (SecurityCodeScan, veredito por severidade com baseline).
+    # Gate de SAST (SecurityCodeScan): achado alto fora do baseline bloqueia.
     - name: Security Code Scan - gate por severidade
       run: |
-        $BUILD_LOG = Join-Path $PWD.Path "scs-build.log"
+        python3 - <<'PY'
+        import json, os, re, sys
+        log = "scs-build.log"
+        if not os.path.exists(log):
+            print("Log de build ausente - pulando gate de SCS."); sys.exit(0)
+        altos = {"SCS0002","SCS0003","SCS0007","SCS0016","SCS0018","SCS0026","SCS0028","SCS0029","SCS0031"}
+        base = set()
+        bf = "LayoutParserApi/security-code-scan-baseline.json"
+        if os.path.exists(bf):
+            for f in json.load(open(bf)).get("findings", []):
+                base.add("%s:%s:%s" % (f["code"], f["file"], f["line"]))
+        print("Baseline: %d achado(s)" % len(base))
+        total, conhecidos, novos = {}, set(), set()
+        for l in open(log, errors="replace"):
+            m = re.search(r"warning (SCS\d+)", l)
+            if not m: continue
+            c = m.group(1); total[c] = total.get(c, 0) + 1
+            f = re.search(r"(?P<f>[^():\s][^():]*\.cs)\((?P<l>\d+),\d+\):", l)
+            if c in altos and f:
+                rel = f.group("f").replace("\\", "/")
+                for mk in ("/Controllers/", "/Services/"):
+                    i = rel.find(mk)
+                    if i >= 0:
+                        rel = rel[i+1:]; break
+                k = "%s:%s:%s" % (c, rel, f.group("l"))
+                (conhecidos if k in base else novos).add(k)
+        for c, n in total.items(): print("  %s : %d" % (c, n))
+        for k in sorted(conhecidos): print("  baseline:", k)
+        if novos:
+            for k in sorted(novos): print("  NOVO:", k)
+            print("SecurityCodeScan: %d achado(s) NOVO(S) fora do baseline." % len(novos)); sys.exit(1)
+        print("Gate de SCS OK.")
+        PY
 
-        if (-not (Test-Path $BUILD_LOG)) {
-          Write-Warning "Log de build nao encontrado em $BUILD_LOG - pulando gate de SCS."
-          exit 0
-        }
-
-        $CODIGOS_ALTOS = @(
-          "SCS0002",
-          "SCS0003",
-          "SCS0007",
-          "SCS0016",
-          "SCS0018",
-          "SCS0026",
-          "SCS0028",
-          "SCS0029",
-          "SCS0031"
-        )
-
-        $BASELINE_FILE = Join-Path $PWD.Path "LayoutParserApi\security-code-scan-baseline.json"
-        $baselineKeys = New-Object System.Collections.Generic.HashSet[string]
-        if (Test-Path $BASELINE_FILE) {
-          $baselineJson = Get-Content $BASELINE_FILE -Raw | ConvertFrom-Json
-          foreach ($item in $baselineJson.findings) {
-            [void]$baselineKeys.Add("$($item.code):$($item.file):$($item.line)")
-          }
-          Write-Host "Baseline carregado: $($baselineKeys.Count) achado(s) conhecido(s) em $BASELINE_FILE"
-        } else {
-          Write-Warning "security-code-scan-baseline.json nao encontrado - todo achado alto sera tratado como novo."
-        }
-
-        $linhas = Get-Content $BUILD_LOG | Where-Object { $_ -match "warning SCS\d+" }
-        $totalPorCodigo = @{}
-        $achadosConhecidos = New-Object System.Collections.Generic.HashSet[string]
-        $achadosNovos = New-Object System.Collections.Generic.HashSet[string]
-
-        foreach ($linha in $linhas) {
-          if ($linha -match "warning (SCS\d+)") {
-            $codigo = $Matches[1]
-            if (-not $totalPorCodigo.ContainsKey($codigo)) { $totalPorCodigo[$codigo] = 0 }
-            $totalPorCodigo[$codigo]++
-
-            if ($CODIGOS_ALTOS -contains $codigo -and $linha -match '(?<file>[A-Za-z]:[^():]+\.cs)\((?<line>\d+),(?<col>\d+)\):') {
-              $relFile = $Matches.file -replace '\\', '/'
-              foreach ($marker in @('/Controllers/', '/Services/')) {
-                $idx = $relFile.IndexOf($marker)
-                if ($idx -ge 0) {
-                  $relFile = $relFile.Substring($idx + 1)
-                  break
-                }
-              }
-              $chave = "$($codigo):$($relFile):$($Matches.line)"
-              if ($baselineKeys.Contains($chave)) {
-                [void]$achadosConhecidos.Add($chave)
-              } else {
-                [void]$achadosNovos.Add($chave)
-              }
-            }
-          }
-        }
-
-        Write-Host "Achados do SecurityCodeScan por codigo:"
-        foreach ($codigo in $totalPorCodigo.Keys) {
-          Write-Host "  $codigo : $($totalPorCodigo[$codigo])"
-        }
-
-        if ($achadosConhecidos.Count -gt 0) {
-          Write-Host ""
-          Write-Host "Achados de severidade ALTA ja no baseline (nao bloqueiam - debito tecnico conhecido):"
-          $achadosConhecidos | Sort-Object | ForEach-Object { Write-Host "  $_" }
-        }
-
-        if ($achadosNovos.Count -gt 0) {
-          Write-Host ""
-          Write-Host "Achados de severidade ALTA NOVOS (bloqueiam o merge):"
-          $achadosNovos | Sort-Object | ForEach-Object { Write-Host "  $_" }
-          Write-Error "SecurityCodeScan encontrou $($achadosNovos.Count) achado(s) NOVO(S) de severidade alta/critica (fora do baseline). Corrija, ou se for falso-positivo/debito aceito conscientemente, adicione ao security-code-scan-baseline.json."
-          exit 1
-        }
-
-        Write-Host "Nenhum achado de severidade alta/critica NOVO - gate de SCS OK (baseline conhecido e warnings de menor severidade nao bloqueiam)."
-
-    # Quality gate de verdade da PR: teste vermelho BLOQUEIA o merge.
     - name: Testes (xUnit)
       run: |
-        $TEST_PROJECT = Join-Path $PWD.Path "LayoutParserApi\tests\LayoutParserApi.Tests\LayoutParserApi.Tests.csproj"
+        dotnet test LayoutParserApi/tests/LayoutParserApi.Tests/LayoutParserApi.Tests.csproj --configuration Release --logger "console;verbosity=minimal"
 
-        if (-not (Test-Path $TEST_PROJECT)) {
-          Write-Error "Projeto de testes nao encontrado: $TEST_PROJECT"
-          exit 1
-        }
-
-        dotnet test "$TEST_PROJECT" --configuration Release --logger "console;verbosity=minimal"
-        if ($LASTEXITCODE -ne 0) {
-          Write-Error "Testes falharam - PR bloqueada."
-          exit 1
-        }
-
-        Write-Host "Suite de testes verde."
-
-    # ---------------------------------------------------------------------------------------
-    # Contract check de OpenAPI (issue #414) - ADVISORY por padrao.
-    #
-    # Compara o OpenAPI da PR com o da base (develop) e reporta breaking changes (endpoint
-    # removido, campo obrigatorio novo em request, tipo alterado, campo de resposta removido).
-    # Mudanca ADITIVA (endpoint/campo novo opcional) e reportada so como informativa.
-    #
-    # Extracao deterministica, sem subir o servico de verdade nem depender de SQL/Redis/Ollama:
-    # 'swagger tofile' (Swashbuckle.AspNetCore.Cli, mesma versao do pacote do .csproj) carrega
-    # o assembly compilado e gera o documento sem chamar app.Run() (sem porta, sem hosted
-    # services). ASPNETCORE_ENVIRONMENT=Testing usa appsettings.Testing.json, que aponta
-    # Redis/SQL para hosts inalcancaveis com timeout curto - o mesmo mecanismo do
-    # ProgramCompositionRootTests. Nenhuma mudanca em Program.cs foi necessaria.
-    #
-    # Diff: oasdiff (Apache-2.0), binario de release fixado por versao + SHA256 e cacheado no
-    # RUNNER_TOOL_CACHE do runner (baixa uma unica vez; nada e instalado globalmente).
-    #
-    # Promover para bloqueante: ver a variavel OPENAPI_CONTRACT_BLOCKING no topo do arquivo.
-    # ---------------------------------------------------------------------------------------
-    - name: Checkout base (develop) para comparar OpenAPI
+    - name: Checkout base da PR (develop ou master) para comparar OpenAPI
       continue-on-error: ${{ env.OPENAPI_CONTRACT_BLOCKING != 'true' }}
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      uses: actions/checkout@v7
       with:
         ref: ${{ github.event.pull_request.base.sha }}
         path: LayoutParserApi-base
 
+    # Advisory por padrao (ver OPENAPI_CONTRACT_BLOCKING). oasdiff fixado por versao e cacheado.
     - name: Contract check de OpenAPI (oasdiff, advisory)
-      # Advisory: qualquer falha do step (inclusive de infraestrutura - download, build da base,
-      # extracao) NAO reprova a PR. Em modo bloqueante (variavel = 'true') a falha reprova.
       continue-on-error: ${{ env.OPENAPI_CONTRACT_BLOCKING != 'true' }}
       run: |
-        $OASDIFF_VERSION = "1.32.1"
-        $OASDIFF_SHA256  = "4d0758b32d454e6011e59db93884af1ca27ae2b212d990f36738ea5efb5d7f28"
-        $BLOQUEANTE = ($env:OPENAPI_CONTRACT_BLOCKING -eq "true")
+        set -euo pipefail
+        OAS_VER="1.32.1"
+        BLOQ="${OPENAPI_CONTRACT_BLOCKING:-false}"
+        RAIZ="$PWD"
+        CACHE="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}"
+        SCR="$RUNNER_TEMP/openapi-contract"; rm -rf "$SCR"; mkdir -p "$SCR"
 
-        $raiz = $PWD.Path
-        $cache = $env:RUNNER_TOOL_CACHE
-        if (-not $cache) { $cache = $env:RUNNER_TEMP }
-        $scratch = Join-Path $env:RUNNER_TEMP "openapi-contract"
-        if (Test-Path $scratch) { Remove-Item $scratch -Recurse -Force }
-        New-Item -ItemType Directory -Path $scratch | Out-Null
+        OAS_DIR="$CACHE/oasdiff/$OAS_VER"; OAS="$OAS_DIR/oasdiff"
+        if [ ! -x "$OAS" ]; then
+          mkdir -p "$OAS_DIR"
+          ARQ="oasdiff_${OAS_VER}_linux_amd64.tar.gz"
+          BASE_URL="https://github.com/oasdiff/oasdiff/releases/download/v$OAS_VER"
+          curl -fsSL -o "$SCR/oas.tgz" "$BASE_URL/$ARQ"
+          curl -fsSL -o "$SCR/checksums.txt" "$BASE_URL/checksums.txt"
+          ESPERADO=$(awk -v f="$ARQ" '$2==f {print $1}' "$SCR/checksums.txt")
+          [ -n "$ESPERADO" ] || { echo "SHA256 de $ARQ ausente em checksums.txt"; exit 1; }
+          echo "$ESPERADO  $SCR/oas.tgz" | sha256sum -c -
+          tar -xzf "$SCR/oas.tgz" -C "$OAS_DIR"
+        fi
+        echo "oasdiff: $("$OAS" --version)"
 
-        # --- 1. oasdiff (baixa uma vez, valida SHA256, cacheia) ---
-        $oasDir = Join-Path $cache ("oasdiff\" + $OASDIFF_VERSION)
-        $oasExe = Join-Path $oasDir "oasdiff.exe"
-        if (-not (Test-Path $oasExe)) {
-          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          New-Item -ItemType Directory -Force -Path $oasDir | Out-Null
-          $tgz = Join-Path $scratch "oasdiff.tar.gz"
-          $url = "https://github.com/oasdiff/oasdiff/releases/download/v$OASDIFF_VERSION/oasdiff_$($OASDIFF_VERSION)_windows_amd64.tar.gz"
-          Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $tgz
-          $hash = (Get-FileHash $tgz -Algorithm SHA256).Hash.ToLower()
-          if ($hash -ne $OASDIFF_SHA256) {
-            Remove-Item $oasDir -Recurse -Force
-            Write-Error "SHA256 do oasdiff nao confere (esperado $OASDIFF_SHA256, obtido $hash)."
-            exit 1
-          }
-          tar -xzf $tgz -C $oasDir
-          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $oasExe)) {
-            Write-Error "Falha ao extrair o oasdiff."
-            exit 1
-          }
+        gen() {
+          proj="$1"; out="$2"
+          ver=$(grep -oP 'Swashbuckle\.AspNetCore"\s+Version="\K[^"]+' "$proj/LayoutParserApi.csproj" | head -1)
+          [ -n "$ver" ] || { echo "Versao do Swashbuckle nao encontrada"; return 1; }
+          tool="$CACHE/swashbuckle-cli/$ver"
+          [ -x "$tool/swagger" ] || dotnet tool install Swashbuckle.AspNetCore.Cli --version "$ver" --tool-path "$tool"
+          dll="$proj/bin/Release/net10.0/LayoutParserApi.dll"
+          if [ ! -f "$dll" ]; then
+            dotnet restore "$proj/LayoutParserApi.csproj"
+            dotnet build "$proj/LayoutParserApi.csproj" -c Release --no-restore -p:RunAnalyzers=false -v q
+          fi
+          ( cd "$proj" && ASPNETCORE_ENVIRONMENT=Testing "$tool/swagger" tofile --output "$out" "$dll" v1 )
         }
-        Write-Host "oasdiff: $(& $oasExe --version)"
+        gen "$RAIZ/LayoutParserApi-base" "$SCR/base.json"
+        gen "$RAIZ/LayoutParserApi" "$SCR/pr.json"
 
-        # --- 2. Extracao do OpenAPI (swagger tofile) da base e da PR ---
-        function Get-OpenApi([string]$projDir, [string]$saida) {
-          $csproj = Join-Path $projDir "LayoutParserApi.csproj"
-          $m = [regex]::Match((Get-Content $csproj -Raw), 'Swashbuckle\.AspNetCore"\s+Version="([^"]+)"')
-          if (-not $m.Success) { throw "Versao do Swashbuckle.AspNetCore nao encontrada em $csproj" }
-          $ver = $m.Groups[1].Value
-
-          $toolDir = Join-Path $cache ("swashbuckle-cli\" + $ver)
-          $swagger = Join-Path $toolDir "swagger.exe"
-          if (-not (Test-Path $swagger)) {
-            dotnet tool install Swashbuckle.AspNetCore.Cli --version $ver --tool-path $toolDir
-            if ($LASTEXITCODE -ne 0) { throw "Falha ao instalar Swashbuckle.AspNetCore.Cli $ver" }
-          }
-
-          $dll = Join-Path $projDir "bin\Release\net10.0\LayoutParserApi.dll"
-          if (-not (Test-Path $dll)) {
-            # A base ainda nao foi compilada neste runner (a PR ja foi, no step de build acima).
-            dotnet restore $csproj
-            if ($LASTEXITCODE -ne 0) { throw "Falha no restore de $csproj" }
-            dotnet build $csproj --configuration Release --no-restore -p:RunAnalyzers=false -v q
-            if ($LASTEXITCODE -ne 0) { throw "Falha no build de $csproj" }
-          }
-
-          $env:ASPNETCORE_ENVIRONMENT = "Testing"
-          Push-Location $projDir
-          try {
-            & $swagger tofile --output $saida $dll v1
-            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $saida)) { throw "swagger tofile falhou para $projDir" }
-          } finally {
-            Pop-Location
-            Remove-Item Env:ASPNETCORE_ENVIRONMENT -ErrorAction SilentlyContinue
-          }
-        }
-
-        $baseJson = Join-Path $scratch "openapi-base.json"
-        $prJson   = Join-Path $scratch "openapi-pr.json"
-        Get-OpenApi (Join-Path $raiz "LayoutParserApi-base") $baseJson
-        Get-OpenApi (Join-Path $raiz "LayoutParserApi") $prJson
-
-        # --- 3. Diff: breaking (ERR/WARN) x total de mudancas (aditivas = nivel info) ---
-        $breakingTxt = (& $oasExe breaking $baseJson $prJson --format json) -join "`n"
-        if ($LASTEXITCODE -ne 0) { throw "oasdiff breaking falhou" }
-        $changelogTxt = (& $oasExe changelog $baseJson $prJson --format json) -join "`n"
-        if ($LASTEXITCODE -ne 0) { throw "oasdiff changelog falhou" }
-
-        $breaking = @()
-        if ($breakingTxt.Trim().StartsWith("[")) { $breaking = @($breakingTxt | ConvertFrom-Json) }
-        $changelog = @()
-        if ($changelogTxt.Trim().StartsWith("[")) { $changelog = @($changelogTxt | ConvertFrom-Json) }
-
-        $erros    = @($breaking | Where-Object { $_.level -ge 3 })
-        $avisos   = @($breaking | Where-Object { $_.level -eq 2 })
-        $aditivas = @($changelog | Where-Object { $_.level -le 1 })
-
-        # --- 4. Relatorio no resumo do job + annotations ---
-        $resumo = New-Object System.Collections.Generic.List[string]
-        $resumo.Add("## Contract check de OpenAPI (oasdiff $OASDIFF_VERSION)")
-        $resumo.Add("")
-        if ($BLOQUEANTE) { $resumo.Add("Modo: **BLOQUEANTE**") } else { $resumo.Add("Modo: **advisory** (nao reprova a PR; ver OPENAPI_CONTRACT_BLOCKING no topo do workflow)") }
-        $resumo.Add("")
-        $resumo.Add("| Categoria | Qtde |")
-        $resumo.Add("|---|---|")
-        $resumo.Add("| Breaking changes (erro) | $($erros.Count) |")
-        $resumo.Add("| Avisos (potencialmente breaking) | $($avisos.Count) |")
-        $resumo.Add("| Mudancas aditivas / informativas (ok) | $($aditivas.Count) |")
-        $resumo.Add("")
-
-        if ($erros.Count -gt 0 -or $avisos.Count -gt 0) {
-          $resumo.Add("### Breaking changes e avisos")
-          $resumo.Add("")
-          foreach ($c in ($erros + $avisos)) {
-            $nivel = if ($c.level -ge 3) { "ERRO" } else { "AVISO" }
-            $resumo.Add("- [$nivel] ``$($c.operation) $($c.path)`` - $($c.text) (``$($c.id)``)")
-          }
-          $resumo.Add("")
-        } else {
-          $resumo.Add("Nenhuma breaking change detectada.")
-          $resumo.Add("")
-        }
-
-        if ($aditivas.Count -gt 0) {
-          $resumo.Add("<details><summary>Mudancas aditivas (ok)</summary>")
-          $resumo.Add("")
-          foreach ($c in ($aditivas | Select-Object -First 100)) {
-            $resumo.Add("- ``$($c.operation) $($c.path)`` - $($c.text)")
-          }
-          $resumo.Add("")
-          $resumo.Add("</details>")
-        }
-
-        if ($env:GITHUB_STEP_SUMMARY) {
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $resumo -Encoding UTF8
-        }
-
-        foreach ($c in ($erros | Select-Object -First 20)) {
-          Write-Host "::warning title=OpenAPI breaking change::$($c.operation) $($c.path) - $($c.text) [$($c.id)]"
-        }
-        Write-Host "OpenAPI: $($erros.Count) breaking, $($avisos.Count) aviso(s), $($aditivas.Count) aditiva(s)/informativa(s)."
-
-        if ($erros.Count -gt 0 -and $BLOQUEANTE) {
-          Write-Error "Contract check de OpenAPI: $($erros.Count) breaking change(s) - PR bloqueada."
-          exit 1
-        }
-        exit 0
+        "$OAS" breaking "$SCR/base.json" "$SCR/pr.json" --format json > "$SCR/breaking.json"
+        "$OAS" changelog "$SCR/base.json" "$SCR/pr.json" --format json > "$SCR/changelog.json"
+        python3 - "$SCR" "$OAS_VER" "$BLOQ" <<'PY'
+        import json, os, sys
+        scr, ver, bloq = sys.argv[1], sys.argv[2], sys.argv[3] == "true"
+        def ld(p):
+            t = open(p).read().strip()
+            return json.loads(t) if t.startswith("[") else []
+        br, cl = ld(scr + "/breaking.json"), ld(scr + "/changelog.json")
+        erros = [c for c in br if c.get("level", 0) >= 3]
+        avisos = [c for c in br if c.get("level") == 2]
+        adit = [c for c in cl if c.get("level", 0) <= 1]
+        r = ["## Contract check de OpenAPI (oasdiff %s)" % ver, "",
+             "Modo: **%s**" % ("BLOQUEANTE" if bloq else "advisory"), "",
+             "| Categoria | Qtde |", "|---|---|",
+             "| Breaking changes (erro) | %d |" % len(erros),
+             "| Avisos | %d |" % len(avisos),
+             "| Aditivas / informativas | %d |" % len(adit), ""]
+        for c in erros + avisos:
+            r.append("- [%s] `%s %s` - %s" % ("ERRO" if c["level"] >= 3 else "AVISO", c.get("operation"), c.get("path"), c.get("text")))
+        s = os.environ.get("GITHUB_STEP_SUMMARY")
+        if s: open(s, "a").write("\n".join(r) + "\n")
+        for c in erros[:20]:
+            print("::warning title=OpenAPI breaking change::%s %s - %s" % (c.get("operation"), c.get("path"), c.get("text")))
+        print("OpenAPI: %d breaking, %d aviso(s), %d aditiva(s)." % (len(erros), len(avisos), len(adit)))
+        if erros and bloq: sys.exit(1)
+        PY

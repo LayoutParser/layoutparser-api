@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -68,7 +69,8 @@ namespace LayoutParserApi.Services.Transformation.Ai
         public AiCandidateStore(
             ILogger<AiCandidateStore> logger,
             IOptions<AiTransformationCandidateOptions> options,
-            Func<DateTimeOffset>? clock = null)
+            Func<DateTimeOffset>? clock = null,
+            StoragePaths? storagePaths = null)
         {
             _logger = logger;
             _clock = clock ?? (() => DateTimeOffset.UtcNow);
@@ -77,7 +79,7 @@ namespace LayoutParserApi.Services.Transformation.Ai
             var maxTickets = options.Value.MaxStoredTickets;
             _maxStoredTickets = maxTickets > 0 ? maxTickets : AiTransformationCandidateOptions.DefaultMaxStoredTickets;
             _storePath = options.Value.StorePath
-                ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MLData", "AiTransformationCandidates");
+                ?? (storagePaths ?? new StoragePaths(new ConfigurationBuilder().Build())).AiCandidates;
 
             try
             {

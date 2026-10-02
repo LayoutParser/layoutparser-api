@@ -1,3 +1,4 @@
+using LayoutParserApi.Services.Storage;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 
@@ -55,8 +56,7 @@ namespace LayoutParserApi.Services.Transformation.Ai.Retraining
             _lock = retrainingLock;
             _options = options.Value;
 
-            var trainingDataPath = configuration["XslSynth:TrainingDataPath"]
-                ?? Path.Combine(AppContext.BaseDirectory, "ai", "XslSynth", "training-data");
+            var trainingDataPath = new StoragePaths(configuration).AiTrainingData;
 
             _triggerFilePath = !string.IsNullOrWhiteSpace(_options.TriggerFilePath)
                 ? _options.TriggerFilePath!

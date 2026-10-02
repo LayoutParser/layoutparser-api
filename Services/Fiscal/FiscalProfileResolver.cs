@@ -43,7 +43,7 @@ namespace LayoutParserApi.Services.Fiscal
         {
             _configuration = configuration;
             _logger = logger;
-            _xsdBasePath = configuration["XsdValidation:BasePath"];
+            _xsdBasePath = new LayoutParserApi.Services.Storage.StoragePaths(configuration).Xsd;
         }
 
         public FiscalProfileValidationResult Validate(FiscalProfile profile)
