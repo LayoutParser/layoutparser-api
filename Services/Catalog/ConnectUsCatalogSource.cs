@@ -198,15 +198,19 @@ namespace LayoutParserApi.Services.Catalog
             var raw = await _reader.GetMapperValueContentAsync(guid, projectId, cancellationToken);
             if (string.IsNullOrEmpty(raw))
                 return null;
-            if (_decryption != null)
+            // ✅ Nunca devolve a cifra como se fosse texto claro (P1.1 do IDecryptionService): sem decryptor
+            // ou com falha na descriptografia o conteúdo fica indisponível (null), em vez de expor ValueContent bruto.
+            if (_decryption == null)
             {
-                try { return new MappingContent(await _decryption.DecryptContentAsync(raw), MappingCatalogEngine.Tcl); }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "ConnectUs: falha ao descriptografar {Key}; devolvendo conteúdo bruto.", sourceRef.SourceItemKey);
-                }
+                _logger.LogWarning("ConnectUs: decryptor indisponível; conteúdo de {Key} não será exposto.", sourceRef.SourceItemKey);
+                return null;
             }
-            return new MappingContent(raw, MappingCatalogEngine.Tcl);
+            try { return new MappingContent(await _decryption.DecryptContentAsync(raw), MappingCatalogEngine.Tcl); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "ConnectUs: falha ao descriptografar {Key}; conteúdo indisponível.", sourceRef.SourceItemKey);
+                return null;
+            }
         }
     }
 }

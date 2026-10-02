@@ -99,8 +99,35 @@ namespace LayoutParserApi.Tests.Catalog
             Assert.Equal(0, r.ContentCalls);
 
             var item2 = snap.Items.Single(i => i.SourceItemKey.StartsWith("2/"));
-            var c = await src.GetContentAsync(new MappingCatalogSourceRef(item2.SourceItemKey, item2.SourceRefJson), CancellationToken.None);
+            var withDecrypt = new ConnectUsCatalogSource(r, NullLogger<ConnectUsCatalogSource>.Instance, new FakeDecryption());
+            var c = await withDecrypt.GetContentAsync(new MappingCatalogSourceRef(item2.SourceItemKey, item2.SourceRefJson), CancellationToken.None);
             Assert.Equal("corpo-2", c!.Content);
+        }
+
+        private sealed class FakeDecryption : LayoutParserApi.Services.Interfaces.IDecryptionService
+        {
+            public bool Fail;
+            public bool IsDecryptorAvailable => !Fail;
+            public Task<string> DecryptContentAsync(string encryptedContent)
+                => Fail ? throw new InvalidOperationException("decryptor fora") : Task.FromResult(encryptedContent);
+        }
+
+        [Fact]
+        public async Task Conteudo_nunca_devolve_cifra_bruta_sem_decryptor_ou_com_falha()
+        {
+            var r = new FakeReader();
+            r.Projects.Add(new(2, "B"));
+            r.Mappers.Add(M(1, "g", 2));
+            r.Contents[("g", 2)] = "CIFRA-SENSIVEL";
+            var snap = await New(r).ReadAsync(CancellationToken.None);
+            var it = snap.Items.Single();
+            var sref = new MappingCatalogSourceRef(it.SourceItemKey, it.SourceRefJson);
+
+            // sem decryptor registrado
+            Assert.Null(await New(r).GetContentAsync(sref, CancellationToken.None));
+            // decryptor que falha
+            var falho = new ConnectUsCatalogSource(r, NullLogger<ConnectUsCatalogSource>.Instance, new FakeDecryption { Fail = true });
+            Assert.Null(await falho.GetContentAsync(sref, CancellationToken.None));
         }
     }
 }
