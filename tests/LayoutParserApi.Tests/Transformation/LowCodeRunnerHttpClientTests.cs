@@ -119,6 +119,71 @@ public class LowCodeRunnerHttpClientTests
         Assert.Single(h.Requests); // sem retry fora de queue_full
     }
 
+    [Theory]
+    [InlineData(400, "invalid_request")]
+    [InlineData(404, "route_not_found")]
+    [InlineData(422, "empty_document")]
+    [InlineData(422, "input_not_found")]
+    [InlineData(422, "empty_result")]
+    [InlineData(422, "package_not_configured")]
+    [InlineData(422, "package_not_found")]
+    [InlineData(499, "client_closed_request")]
+    [InlineData(409, "ambiguous_mapper")]
+    [InlineData(500, "runtime_error")]
+    public async Task CodeDoRunner_QuandoConhecido_TemPrecedenciaSobreOStatus(int status, string code)
+    {
+        var h = new FakeHandler().Enqueue(Json((HttpStatusCode)status, $"{{\"code\":\"{code}\",\"error\":\"x\",\"exitCode\":4,\"correlationId\":\"c\"}}"));
+        var ex = await Assert.ThrowsAsync<LowCodeRunnerException>(() => Chamar(Novo(h)));
+        Assert.Equal(code, ex.Code);
+        Assert.Equal(4, ex.ExitCode);
+    }
+
+    [Theory]
+    [InlineData("codigo_inventado")]
+    [InlineData("C:\\segredo")]
+    [InlineData("")]
+    public async Task CodeDesconhecido_CaiNoMapeamentoPorStatus_SemExporString(string code)
+    {
+        var h = new FakeHandler().Enqueue(Json(HttpStatusCode.UnprocessableEntity, $"{{\"code\":\"{code}\",\"error\":\"x\",\"exitCode\":1}}"));
+        var ex = await Assert.ThrowsAsync<LowCodeRunnerException>(() => Chamar(Novo(h)));
+        Assert.Equal("transform_failed", ex.Code);
+    }
+
+    [Fact]
+    public async Task CodeAusente_ContinuaMapeandoPorStatus()
+    {
+        var h = new FakeHandler().Enqueue(Json(HttpStatusCode.NotFound, Err(2)));
+        var ex = await Assert.ThrowsAsync<LowCodeRunnerException>(() => Chamar(Novo(h)));
+        Assert.Equal("mapper_not_found", ex.Code);
+    }
+
+    [Fact]
+    public async Task Code503_SemRetryAfter_ContinuaRunnerUnavailable_MesmoQueDigaQueueFull()
+    {
+        var h = new FakeHandler().Enqueue(Json(HttpStatusCode.ServiceUnavailable, "{\"code\":\"queue_full\",\"error\":\"x\",\"exitCode\":0}"));
+        var ex = await Assert.ThrowsAsync<LowCodeRunnerException>(() => Chamar(Novo(h)));
+        Assert.Equal("runner_unavailable", ex.Code);
+    }
+
+    [Fact]
+    public async Task Code503_ComRetryAfter_QueueFull_Retenta()
+    {
+        var h = new FakeHandler()
+            .Enqueue(Json(HttpStatusCode.ServiceUnavailable, "{\"code\":\"queue_full\",\"error\":\"x\",\"exitCode\":0}", retryAfter: 1))
+            .Enqueue(Json(HttpStatusCode.OK, Ok));
+        Assert.Equal("<a/>", (await Chamar(Novo(h))).Output);
+        Assert.Equal(2, h.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Package_NaoEEnviadoNoRequest()
+    {
+        string? corpo = null;
+        var h = new FakeHandler().Enqueue(req => { corpo = req.Content!.ReadAsStringAsync().Result; return Json(HttpStatusCode.OK, Ok); });
+        await Novo(h).TransformAsync("d", "f", "M1", null, "c", default, packageMappers: "PAC_x");
+        Assert.DoesNotContain("package", corpo, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task MensagemDeErro_PassaPeloSanitizer_SemCaminhoDeDisco()
     {
@@ -203,6 +268,15 @@ public class LowCodeRunnerHttpClientTests
     [InlineData("queue_full", "queue_full")]
     [InlineData("timeout", "timeout")]
     [InlineData("mapper_not_found", "mapper_not_found")]
+    [InlineData("empty_document", "empty_document")]
+    [InlineData("input_not_found", "input_not_found")]
+    [InlineData("empty_result", "empty_result")]
+    [InlineData("package_not_configured", "package_not_configured")]
+    [InlineData("package_not_found", "package_not_found")]
+    [InlineData("route_not_found", "route_not_found")]
+    [InlineData("client_closed_request", "client_closed_request")]
+    [InlineData("ambiguous_mapper", "ambiguous_mapper")]
+    [InlineData("qualquer_coisa", "runtime_error")]
     [InlineData(null, "runner_unavailable")]
     [InlineData("", "runner_unavailable")]
     public void PathwayDiagnostic_ErrorCode_ParaCode(string? errorCode, string esperado) =>

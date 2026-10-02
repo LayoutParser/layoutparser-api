@@ -13,6 +13,30 @@ namespace LayoutParserApi.Services.Transformation.LowCode
         public const string QueueFull = "queue_full";
         public const string RunnerUnavailable = "runner_unavailable";
         public const string RuntimeError = "runtime_error";
+        // Codigos adicionados pelo runner (campo aditivo "code" nos erros).
+        public const string EmptyDocument = "empty_document";
+        public const string InputNotFound = "input_not_found";
+        public const string EmptyResult = "empty_result";
+        public const string PackageNotConfigured = "package_not_configured";
+        public const string PackageNotFound = "package_not_found";
+        public const string RouteNotFound = "route_not_found";
+        public const string ClientClosedRequest = "client_closed_request";
+        /// <summary>PROPOSTO pelo runner (409), ainda nao confirmado: tratado como codigo conhecido generico.</summary>
+        public const string AmbiguousMapper = "ambiguous_mapper";
+        /// <summary>Somente em resultados de batch (status skipped).</summary>
+        public const string NotExecuted = "not_executed";
+
+        private static readonly HashSet<string> Conhecidos = new(StringComparer.Ordinal)
+        {
+            InvalidRequest, MapperNotFound, TransformFailed, Timeout, QueueFull, RunnerUnavailable, RuntimeError,
+            EmptyDocument, InputNotFound, EmptyResult, PackageNotConfigured, PackageNotFound, RouteNotFound,
+            ClientClosedRequest, AmbiguousMapper, NotExecuted
+        };
+
+        /// <summary>Devolve o codigo canonico se estiver no conjunto conhecido; null caso contrario
+        /// (nunca propaga string arbitraria do runner).</summary>
+        public static string? NormalizeKnown(string? code) =>
+            !string.IsNullOrWhiteSpace(code) && Conhecidos.Contains(code.Trim()) ? code.Trim() : null;
 
         public string Code { get; }
         public int? HttpStatus { get; }

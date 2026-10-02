@@ -20,14 +20,21 @@ namespace LayoutParserApi.Models.Transformation
         public string Status { get; set; } = "";
 
         /// <summary>Código do diagnóstico sysmiddle a partir do ErrorCode do runner HTTP (#641);
-        /// sem código (falha fora do cliente HTTP) mantém o histórico runner_unavailable.</summary>
+        /// sem código (falha fora do cliente HTTP) mantém o histórico runner_unavailable.
+        /// Expõe o código ESPECÍFICO do runner (empty_document, input_not_found, empty_result,
+        /// package_not_found...) em vez de achatar em transform_failed, pois o portal pediu códigos
+        /// exatos. Código fora do conjunto conhecido vira runtime_error (nunca string arbitrária).</summary>
         public static string ResolveRunnerFailureCode(string? errorCode) =>
-            string.IsNullOrWhiteSpace(errorCode) ? "runner_unavailable" : errorCode;
+            string.IsNullOrWhiteSpace(errorCode)
+                ? "runner_unavailable"
+                : LayoutParserApi.Services.Transformation.LowCode.LowCodeRunnerException.NormalizeKnown(errorCode) ?? "runtime_error";
 
         /// <summary>Taxonomia estável: "no_mapper" | "map_not_found" | "xsl_not_found" |
         /// "configuration_error" | "runner_unavailable" | "execution_error" | "not_applicable";
         /// no pathway sysmiddle via runner HTTP (#641) também: "queue_full" | "mapper_not_found" |
-        /// "transform_failed" | "timeout" | "invalid_request" | "runtime_error"
+        /// "transform_failed" | "timeout" | "invalid_request" | "runtime_error" | "empty_document" |
+        /// "input_not_found" | "empty_result" | "package_not_configured" | "package_not_found" |
+        /// "route_not_found" | "client_closed_request" | "ambiguous_mapper"
         /// (§4.3 do desenho). String, não enum exposto, pelo mesmo motivo de <see cref="Status"/>.</summary>
         public string Code { get; set; } = "";
 

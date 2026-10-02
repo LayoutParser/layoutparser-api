@@ -57,8 +57,14 @@ namespace LayoutParserApi.Services.Transformation.LowCode
         /// </summary>
         public virtual async Task<LowCodeRunnerTransformResponse> TransformAsync(
             string document, string fileName, string? mapperId, string? mapperName,
-            string correlationId, CancellationToken cancellationToken = default)
+            string correlationId, CancellationToken cancellationToken = default,
+            string? packageMappers = null)
         {
+            // PONTO DE EXTENSAO (contrato ainda A CONFIRMAR com o time do runner): o runner passara a
+            // atender TODOS os <PackageMappers> da instancia; ProjectId/package sera o desempate quando
+            // o mesmo MapperGuid existir em projetos diferentes (sem package + homonimo => ambiguous_mapper,
+            // proposto 409). Por ora "package" NAO e enviado: o parametro e aceito e ignorado.
+            _ = packageMappers;
             var hasId = !string.IsNullOrWhiteSpace(mapperId);
             var hasName = !string.IsNullOrWhiteSpace(mapperName);
             if (hasId == hasName)
@@ -226,13 +232,15 @@ namespace LayoutParserApi.Services.Transformation.LowCode
         private static LowCodeRunnerException MapError(HttpResponseMessage resp, string text, string correlationId)
         {
             var status = (int)resp.StatusCode;
-            string? error = null; int? exitCode = null;
+            string? error = null; int? exitCode = null; string? bodyCode = null;
             try
             {
                 using var d = JsonDocument.Parse(text);
                 if (d.RootElement.ValueKind == JsonValueKind.Object)
                 {
                     if (d.RootElement.TryGetProperty("error", out var e)) error = e.ToString();
+                    if (d.RootElement.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String)
+                        bodyCode = LowCodeRunnerException.NormalizeKnown(c.GetString());
                     if (d.RootElement.TryGetProperty("exitCode", out var x) && x.TryGetInt32(out var xi)) exitCode = xi;
                 }
             }
@@ -242,7 +250,7 @@ namespace LayoutParserApi.Services.Transformation.LowCode
             var msg = LowCodeErrorSanitizer.ForWire(string.IsNullOrWhiteSpace(error) ? $"Runner low-code respondeu HTTP {status}" : error)!;
 
             var hasRetryAfter = resp.Headers.RetryAfter != null;
-            var code = status switch
+            var statusCode = status switch
             {
                 400 => LowCodeRunnerException.InvalidRequest,
                 404 => LowCodeRunnerException.MapperNotFound,
@@ -251,6 +259,9 @@ namespace LayoutParserApi.Services.Transformation.LowCode
                 503 => hasRetryAfter ? LowCodeRunnerException.QueueFull : LowCodeRunnerException.RunnerUnavailable,
                 _ => LowCodeRunnerException.RuntimeError
             };
+            // Prefere o "code" do runner (se presente e conhecido); fallback no mapeamento por status.
+            // Regra do 503 preservada: so Retry-After define queue_full, senao runner_unavailable.
+            var code = status == 503 || bodyCode == null ? statusCode : bodyCode;
             var ex = new LowCodeRunnerException(code, msg, status, exitCode);
             if (code == LowCodeRunnerException.QueueFull)
                 ex.Data["RetryAfterSeconds"] = RetryAfterSeconds(resp.Headers.RetryAfter);
