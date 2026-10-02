@@ -587,6 +587,8 @@ try
     // automática lazy de TCL/XSL/XSLT para um mapper Sysmiddle — mesmo banco/padrão ADO.NET, tabela
     // autossuficiente (sem FK). Reaproveita o loop determinístico de ai/XslSynth.Core in-process.
     builder.Services.AddScoped<LayoutParserApi.Services.Interfaces.IGeneratedMapperArtifactStore, LayoutParserApi.Services.Database.SqlGeneratedMapperArtifactStore>();
+    // ✅ Issue #628: índice de metadados do catálogo unificado de mapeadores (IdentityDatabase:*, sem corpo TCL/XSL).
+    builder.Services.AddScoped<LayoutParserApi.Services.Interfaces.IMappingCatalogStore, LayoutParserApi.Services.Database.SqlMappingCatalogStore>();
     // ✅ Issue #473 (fase 2 do trigger lazy #438, ADR §3/§6): config do job periódico + limite de
     // concorrência ÚNICO, compartilhado entre o trigger lazy e o job periódico (Singleton — um só
     // SemaphoreSlim no processo, nunca dois limites independentes).
