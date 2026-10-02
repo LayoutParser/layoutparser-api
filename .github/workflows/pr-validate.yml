@@ -9,8 +9,11 @@ name: PR Validate (LayoutParserApi)
 # (build + testes), sem tocar em servico/deploy - resolve a issue #122 sem herdar o risco de
 # rodar deploy em pull_request.
 #
-# Roda em runner Linux self-hosted (label 'dev-local'), igual ao ci-dev-linux.yml.
-# Nao depende mais do .NET Framework 4.8.1 / Decrypt (a API nao compila contra ele).
+# Roda em runner GITHUB-HOSTED (ubuntu-latest), de proposito: este ambiente (host Linux self-hosted)
+# E producao. Validar PR (build, testes, gate SCS, oasdiff) executa codigo ainda nao revisado e
+# NAO deve rodar no host de producao. Aqui nao ha deploy, nem segredos, nem acesso a rede interna.
+# Repo publico: minutos de Actions gratis. Deploy continua restrito aos workflows *-linux.yml.
+# Nao depende do .NET Framework 4.8.1 / Decrypt (a API nao compila contra ele).
 
 on:
   pull_request:
@@ -47,10 +50,10 @@ jobs:
   build-and-test:
     # Nome do job = contexto do check ('build'), compativel com o check das PRs antigas.
     name: build
-    # Runner self-hosted: nunca executar codigo de fork (PR de fork nao recebe secrets e o codigo
+    # Nunca executar codigo de fork (PR de fork nao recebe secrets e o codigo
     # nao e confiavel). Dependabot abre branch no proprio repo: roda com token read-only, sem secrets.
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, dev-local]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
@@ -61,8 +64,6 @@ jobs:
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v6
-      env:
-        DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
       with:
         dotnet-version: '10.0.x'
 
@@ -134,7 +135,13 @@ jobs:
         OAS_DIR="$CACHE/oasdiff/$OAS_VER"; OAS="$OAS_DIR/oasdiff"
         if [ ! -x "$OAS" ]; then
           mkdir -p "$OAS_DIR"
-          curl -fsSL -o "$SCR/oas.tgz" "https://github.com/oasdiff/oasdiff/releases/download/v$OAS_VER/oasdiff_${OAS_VER}_linux_amd64.tar.gz"
+          ARQ="oasdiff_${OAS_VER}_linux_amd64.tar.gz"
+          BASE_URL="https://github.com/oasdiff/oasdiff/releases/download/v$OAS_VER"
+          curl -fsSL -o "$SCR/oas.tgz" "$BASE_URL/$ARQ"
+          curl -fsSL -o "$SCR/checksums.txt" "$BASE_URL/checksums.txt"
+          ESPERADO=$(awk -v f="$ARQ" '$2==f {print $1}' "$SCR/checksums.txt")
+          [ -n "$ESPERADO" ] || { echo "SHA256 de $ARQ ausente em checksums.txt"; exit 1; }
+          echo "$ESPERADO  $SCR/oas.tgz" | sha256sum -c -
           tar -xzf "$SCR/oas.tgz" -C "$OAS_DIR"
         fi
         echo "oasdiff: $("$OAS" --version)"
