@@ -50,7 +50,7 @@ public sealed record GuidXPathEntry(
 /// <param name="Kind"><c>"group"</c> (tem filhos), <c>"element"</c> (folha) ou <c>"attribute"</c>.</param>
 public sealed record LayoutTreeNode(
     string? ElementGuid, string Name, string Kind, int? MinOccurs, int? MaxOccurs,
-    IReadOnlyList<LayoutTreeNode> Children);
+    IReadOnlyList<LayoutTreeNode> Children, string? XsiType = null);
 
 /// <summary>Catálogo GUID→XPath construído a partir de um LayoutVO exportado (Connect Us).</summary>
 public sealed class GuidXPathCatalog
@@ -239,7 +239,7 @@ public sealed class GuidXPathCatalog
         var (min, max) = LeOcorrencia(el);
         var kind = ehAtributo ? "attribute" : filhos is not null ? "group" : "element";
 
-        return new LayoutTreeNode(guid, name, kind, min, max, childNodes);
+        return new LayoutTreeNode(guid, name, kind, min, max, childNodes, string.IsNullOrEmpty(tipo) ? null : tipo);
     }
 
     /// <summary>

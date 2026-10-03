@@ -68,9 +68,9 @@ namespace LayoutParserApi.Services.Fiscal
 
             var source = await ResolveSideAsync(inputLayoutGuid, cancellationToken);
             var target = await ResolveSideAsync(targetLayoutGuid, cancellationToken);
-            var (rules, limitations, dslRules) = ResolveRules(mapper, source, target, dslOptions ?? new LayoutTreeDslOptions());
+            var (rules, limitations, dslRules, diagnostics) = ResolveRules(mapper, source, target, dslOptions ?? new LayoutTreeDslOptions());
 
-            return new LayoutTreeResponse(mapper.MapperGuid, source, target, rules, limitations, dslRules);
+            return new LayoutTreeResponse(mapper.MapperGuid, source, target, rules, limitations, dslRules, diagnostics);
         }
 
         /// <summary>
@@ -90,6 +90,13 @@ namespace LayoutParserApi.Services.Fiscal
             try
             {
                 layoutRecord = await _cachedLayoutService.GetLayoutByGuidAsync(layoutGuid);
+                // O ConnectUs compara o GUID do layout de forma ordinal e o catálogo ora guarda com "LAY_", ora sem:
+                // tenta a forma alternativa antes de degradar a árvore para vazia.
+                if (layoutRecord == null)
+                {
+                    var alternativo = layoutGuid.StartsWith("LAY_", StringComparison.OrdinalIgnoreCase) ? layoutGuid[4..] : "LAY_" + layoutGuid;
+                    layoutRecord = await _cachedLayoutService.GetLayoutByGuidAsync(alternativo);
+                }
             }
             catch (Exception ex)
             {
@@ -107,7 +114,7 @@ namespace LayoutParserApi.Services.Fiscal
                 layoutRecord.DecryptedContent, sourceLabel: layoutRecord.Name, log: msg => _logger.LogInformation("{Msg}", msg));
 
             var (kind, legivel) = DetectKind(layoutRecord.DecryptedContent);
-            var dtoRoots = ToDto(roots);
+            var dtoRoots = ToDto(roots, kind);
 
             // Motivo explícito quando a árvore não pôde ser materializada (campo opcional, 200 mantido).
             string? motivo = null;
@@ -140,16 +147,33 @@ namespace LayoutParserApi.Services.Fiscal
             }
         }
 
-        private static IReadOnlyList<LayoutTreeNodeDto> ToDto(IReadOnlyList<LayoutTreeNode> nodes)
-            => nodes.Select(ToDto).ToList();
+        private static IReadOnlyList<LayoutTreeNodeDto> ToDto(IReadOnlyList<LayoutTreeNode> nodes, string layoutKind, string parentPath = "")
+            => nodes.Select(n => ToDto(n, layoutKind, parentPath)).ToList();
 
-        private static LayoutTreeNodeDto ToDto(LayoutTreeNode node)
-            => new(
+        /// <summary>
+        /// <c>XPath</c> segue o <c>FullXPath</c> do ConnectUs: nomes separados por '/', absoluto, sem o nome do layout,
+        /// sem '@' em atributo; nós com <c>ShowInPath=false</c> não entram (e ficam com <c>XPath</c> nulo).
+        /// </summary>
+        private static LayoutTreeNodeDto ToDto(LayoutTreeNode node, string layoutKind, string parentPath)
+        {
+            var prefix = LayoutTreeNodeTypes.PrefixOf(node.ElementGuid);
+            var nodeType = LayoutTreeNodeTypes.Classify(layoutKind, node.Kind, prefix, node.XsiType);
+            var (labelPt, iconKey, showInPath) = LayoutTreeNodeTypes.Presentation(nodeType);
+            var path = showInPath ? (parentPath.Length == 0 ? node.Name : parentPath + "/" + node.Name) : parentPath;
+            return new(
                 node.ElementGuid,
                 node.Name,
                 node.Kind,
                 node.MinOccurs is null && node.MaxOccurs is null ? null : new LayoutTreeCardinality(node.MinOccurs, node.MaxOccurs),
-                ToDto(node.Children));
+                ToDto(node.Children, layoutKind, path),
+                nodeType,
+                prefix,
+                node.XsiType,
+                labelPt,
+                iconKey,
+                showInPath,
+                showInPath ? path : null);
+        }
 
         /// <summary>
         /// Regras = <c>LinkMappingItemVO</c> reais (mapeamento direto campo→campo) — o único ponto
@@ -161,7 +185,7 @@ namespace LayoutParserApi.Services.Fiscal
         /// inventa" (mesma regra que rege <see cref="SysmiddleExplanationAdapter"/>). Quando o mapper
         /// tem regras DSL, sinaliza via <c>Limitations</c> — ver <see cref="LayoutTreeResponse"/>.</para>
         /// </summary>
-        private (IReadOnlyList<LayoutTreeRule> Rules, IReadOnlyList<string> Limitations, LayoutTreeDslRules? Dsl) ResolveRules(
+        private (IReadOnlyList<LayoutTreeRule> Rules, IReadOnlyList<string> Limitations, LayoutTreeDslRules? Dsl, IReadOnlyList<LayoutTreeDiagnostic> Diagnostics) ResolveRules(
             Mapper mapper, LayoutTreeSide source, LayoutTreeSide target, LayoutTreeDslOptions options)
         {
             MapperVo mapperVo;
@@ -172,7 +196,7 @@ namespace LayoutParserApi.Services.Fiscal
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Árvore de layout: MapperVO {MapperGuid} não pôde ser parseado — regras degradam para lista vazia.", mapper.MapperGuid);
-                return (Array.Empty<LayoutTreeRule>(), Array.Empty<string>(), null);
+                return (Array.Empty<LayoutTreeRule>(), Array.Empty<string>(), null, Array.Empty<LayoutTreeDiagnostic>());
             }
 
             var rules = mapperVo.LinkMappings
@@ -182,8 +206,10 @@ namespace LayoutParserApi.Services.Fiscal
                     link.TargetGuid))
                 .ToList();
 
+            var diagnostics = BuildStructuralDiagnostics(mapperVo);
+
             if (mapperVo.Rules.Count == 0)
-                return (rules, Array.Empty<string>(), null);
+                return (rules, Array.Empty<string>(), null, diagnostics);
 
             var dsl = BuildDslRules(mapperVo, source, target, options);
             var limitations = new[]
@@ -194,7 +220,35 @@ namespace LayoutParserApi.Services.Fiscal
                     : $"Mapper tem {mapperVo.Rules.Count} regra(s) condicional(is)/DSL, todas vinculadas a nós — ver dslRules (não aparecem em Rules[])."
             };
 
-            return (rules, limitations, dsl);
+            return (rules, limitations, dsl, diagnostics);
+        }
+
+        /// <summary>
+        /// Destinos com vínculo + regra (a regra é ignorada no runtime) e destinos com N:1 (ordem importa).
+        /// Só considera GUID de destino explícito — nunca infere por nome.
+        /// </summary>
+        private static IReadOnlyList<LayoutTreeDiagnostic> BuildStructuralDiagnostics(MapperVo mapperVo)
+        {
+            var result = new List<LayoutTreeDiagnostic>();
+            var links = mapperVo.LinkMappings
+                .Where(l => !string.IsNullOrWhiteSpace(l.TargetGuid))
+                .GroupBy(l => l.TargetGuid!, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.Select(l => l.ElementGuid ?? $"link:{l.Name}").ToList(), StringComparer.Ordinal);
+            var rulesByTarget = mapperVo.Rules
+                .Where(r => !string.IsNullOrWhiteSpace(r.TargetElementGuid))
+                .GroupBy(r => r.TargetElementGuid!, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.Select(r => r.ElementGuid ?? r.Name ?? "rule").ToList(), StringComparer.Ordinal);
+
+            foreach (var (target, ids) in links)
+            {
+                if (ids.Count > 1)
+                    result.Add(new LayoutTreeDiagnostic("N1_ORDER_SENSITIVE", target, ids,
+                        $"Destino com {ids.Count} vínculos: o ConnectUs usa o 1º (na ordem do arquivo) cuja origem tem dados."));
+                if (rulesByTarget.TryGetValue(target, out var ruleIds))
+                    result.Add(new LayoutTreeDiagnostic("TARGET_LINK_AND_RULE", target, ids.Concat(ruleIds).ToList(),
+                        "Destino com vínculo e regra: no ConnectUs o vínculo tem precedência e a regra nunca é executada."));
+            }
+            return result;
         }
 
         /// <summary>
@@ -223,15 +277,17 @@ namespace LayoutParserApi.Services.Fiscal
 
                 foreach (var r in explained)
                 {
-                    var (srcGuids, srcAll) = sourceIndex.Resolve(r.SourceRefs);
-                    var (tgtGuids, tgtAll) = targetIndex.Resolve(r.TargetRefs);
+                    var diagnostics = new List<string>();
+                    var (srcGuids, srcAll) = sourceIndex.Resolve(r.SourceRefs, caseSensitive: false, diagnostics);
+                    var (tgtGuids, tgtAll) = targetIndex.Resolve(r.TargetRefs, caseSensitive: true, diagnostics);
                     var opaque = r.SupportLevel == MappingExplanationSupportLevel.Opaque;
                     all.Add(new LayoutTreeDslRule(
                         r.RuleId, ruleName, opaque ? "opaque" : "dsl",
                         r.SupportLevel == MappingExplanationSupportLevel.Authoritative, r.SupportLevel,
                         r.SourceRefs, r.TargetRefs, srcGuids, tgtGuids,
                         Resolved: srcAll && tgtAll && r.TargetRefs.Count > 0,
-                        r.Condition, r.HumanDescription, r.TechnicalDetail));
+                        r.Condition, r.HumanDescription, r.TechnicalDetail,
+                        Diagnostics: diagnostics.Distinct().ToList()));
                 }
             }
 
@@ -245,43 +301,50 @@ namespace LayoutParserApi.Services.Fiscal
         }
 
         /// <summary>
-        /// Índice nome/caminho → GUID de uma árvore. Texto I./T. (sem prefixo, '@' ignorado, caminho com '/')
-        /// casa primeiro pelo caminho completo (sufixo) e depois pelo nome da folha; só vale se houver
-        /// exatamente UM nó com GUID — caso contrário fica sem resolução.
+        /// Índice caminho absoluto → GUID, na semântica do ConnectUs (<c>FullXPath</c>): <c>I.</c> compara sem
+        /// diferenciar caixa e <c>T.</c> com caixa exata. Só vale se houver exatamente UM nó com GUID; mais de um
+        /// (irmãos homônimos — o ConnectUs usaria o 1º em silêncio) ou nenhum → sem GUID, com diagnóstico
+        /// (<c>REF_AMBIGUOUS</c>, <c>REF_UNRESOLVED</c>, <c>REF_T_CASE_MISMATCH</c>).
         /// </summary>
         private sealed class NodeIndex
         {
-            private readonly List<(string[] Path, string? Guid)> _nodes = new();
+            private readonly List<(string XPath, string? Guid)> _nodes = new();
 
             public NodeIndex(IReadOnlyList<LayoutTreeNodeDto> roots)
             {
-                void Walk(LayoutTreeNodeDto n, List<string> prefix)
+                void Walk(LayoutTreeNodeDto n)
                 {
-                    prefix.Add(Norm(n.Name));
-                    _nodes.Add((prefix.ToArray(), n.ElementGuid));
-                    foreach (var c in n.Children) Walk(c, prefix);
-                    prefix.RemoveAt(prefix.Count - 1);
+                    if (n.XPath is not null) _nodes.Add((n.XPath, n.ElementGuid));
+                    foreach (var c in n.Children) Walk(c);
                 }
-                foreach (var r in roots) Walk(r, new List<string>());
+                foreach (var r in roots) Walk(r);
             }
 
-            private static string Norm(string s) => s.Trim().TrimStart('@').ToLowerInvariant();
-
-            public (IReadOnlyList<string> Guids, bool AllResolved) Resolve(IReadOnlyList<string> refs)
+            public (IReadOnlyList<string> Guids, bool AllResolved) Resolve(IReadOnlyList<string> refs, bool caseSensitive, List<string> diagnostics)
             {
                 var guids = new List<string>();
                 var all = refs.Count > 0;
                 foreach (var raw in refs)
                 {
                     var text = raw.Length > 2 && raw[1] == '.' && (raw[0] == 'I' || raw[0] == 'T') ? raw[2..] : raw;
-                    var segs = text.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Norm).ToArray();
-                    if (segs.Length == 0) { all = false; continue; }
+                    text = text.Trim().Replace("/@", "/").TrimStart('@');
+                    if (text.Length == 0) { all = false; diagnostics.Add("REF_UNRESOLVED"); continue; }
 
-                    var matches = _nodes.Where(n => n.Path.Length >= segs.Length && n.Path.TakeLast(segs.Length).SequenceEqual(segs)).ToList();
+                    var cmp = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+                    var matches = _nodes.Where(n => string.Equals(n.XPath, text, cmp)).ToList();
                     if (matches.Count == 1 && !string.IsNullOrEmpty(matches[0].Guid))
+                    {
                         guids.Add(matches[0].Guid!);
+                        continue;
+                    }
+
+                    all = false;
+                    if (matches.Count > 1)
+                        diagnostics.Add("REF_AMBIGUOUS");
+                    else if (caseSensitive && _nodes.Any(n => string.Equals(n.XPath, text, StringComparison.OrdinalIgnoreCase)))
+                        diagnostics.Add("REF_T_CASE_MISMATCH");
                     else
-                        all = false;
+                        diagnostics.Add("REF_UNRESOLVED");
                 }
                 return (guids.Distinct(StringComparer.OrdinalIgnoreCase).ToList(), all);
             }

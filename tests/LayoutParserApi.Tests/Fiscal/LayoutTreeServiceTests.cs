@@ -145,7 +145,11 @@ namespace LayoutParserApi.Tests.Fiscal
             var sourceRoot = Assert.Single(result.Source.Roots);
             Assert.Equal("LIN_LINHA000", sourceRoot.ElementGuid);
             Assert.Equal("group", sourceRoot.Kind);
+            Assert.Equal("txt-line", sourceRoot.NodeType);
+            Assert.Equal("LIN_", sourceRoot.GuidPrefix);
+            Assert.Equal("GroupTagElementVO", sourceRoot.XsiType);
             var sourceLeaf = Assert.Single(sourceRoot.Children);
+            Assert.Equal("txt-field", sourceLeaf.NodeType);
             Assert.Equal("FLD_ChaveAcesso", sourceLeaf.ElementGuid);
             Assert.Equal(1, sourceLeaf.Cardinality!.Min);
             Assert.Equal(1, sourceLeaf.Cardinality.Max);
@@ -153,10 +157,13 @@ namespace LayoutParserApi.Tests.Fiscal
             var targetRoot = Assert.Single(result.Target.Roots);
             var targetAttr = Assert.Single(targetRoot.Children);
             Assert.Equal("attribute", targetAttr.Kind);
+            Assert.Equal("xml-attribute", targetAttr.NodeType);
+            Assert.Equal("xml-tag-group", targetRoot.NodeType);
             Assert.Null(targetAttr.Cardinality);
 
             var rule = Assert.Single(result.Rules);
             Assert.Equal("LNK_1", rule.RuleId);
+            Assert.Equal("link", rule.Origin);
             Assert.Equal("FLD_ChaveAcesso", rule.SourceElementGuid);
             Assert.Equal("ATT_Id", rule.TargetElementGuid);
             Assert.Empty(result.Limitations); // sem regra DSL no mapper, sem limitação a sinalizar
@@ -219,6 +226,8 @@ namespace LayoutParserApi.Tests.Fiscal
             var dsl = Assert.Single(result.DslRules!.Items);
             Assert.Equal(1, result.DslRules.Total);
             Assert.False(dsl.Resolved);
+            Assert.Equal("rule", dsl.Origin);
+            Assert.Contains("REF_UNRESOLVED", dsl.Diagnostics!);
             Assert.Empty(dsl.SourceNodeGuids);
             Assert.Equal(1, result.DslRules.Unresolved);
         }
@@ -233,7 +242,7 @@ namespace LayoutParserApi.Tests.Fiscal
                 InputLayoutGuid = "LAY_SOURCE",
                 TargetLayoutGuid = "LAY_TARGET",
                 DecryptedContent = BuildMapperXmlComRegraDsl("MAP_DSL2")
-                    .Replace("T.xCond=I.LINHA1/Campo;", "T.Id=I.LINHA000/ChaveAcesso;"),
+                    .Replace("T.xCond=I.LINHA1/Campo;", "T.infNFe/Id=I.linha000/ChaveAcesso;"),
             });
             layouts.LayoutsByGuid["LAY_SOURCE"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Origem", DecryptedContent = SourceLayoutXml };
             layouts.LayoutsByGuid["LAY_TARGET"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Destino", DecryptedContent = TargetLayoutXml };
@@ -241,13 +250,70 @@ namespace LayoutParserApi.Tests.Fiscal
             var result = await service.GetLayoutTreeAsync("MAP_DSL2", CancellationToken.None);
             var dsl = Assert.Single(result!.DslRules!.Items);
             Assert.True(dsl.Resolved);
+            Assert.Equal("infNFe/Id", result.Target.Roots[0].Children[0].XPath);
+            Assert.Equal("Tag Grupo", result.Target.Roots[0].LabelPt);
             Assert.Equal(new[] { "FLD_ChaveAcesso" }, dsl.SourceNodeGuids);
             Assert.Equal(new[] { "ATT_Id" }, dsl.TargetNodeGuids);
             Assert.Equal(0, result.DslRules.Unresolved);
 
+            // T. diferencia caixa (ConnectUs perde o valor em silêncio): diagnóstico explícito, sem GUID.
+            var caixa = await BuildCaseService("T.INFNFE/Id=I.linha000/ChaveAcesso;");
+            var rc = Assert.Single(caixa!.DslRules!.Items);
+            Assert.False(rc.Resolved);
+            Assert.Contains("REF_T_CASE_MISMATCH", rc.Diagnostics!);
+
             var filtrado = await service.GetLayoutTreeAsync("MAP_DSL2", CancellationToken.None, new LayoutTreeDslOptions("OUTRO_NO"));
             Assert.Empty(filtrado!.DslRules!.Items);
             Assert.Equal(0, filtrado.DslRules.Total);
+        }
+
+        [Fact]
+        public async Task Destino_com_vinculo_e_regra_e_destino_com_N1_geram_diagnosticos_estruturais()
+        {
+            var (service, mappers, layouts) = BuildService();
+            var xml = BuildMapperXmlComRegraDsl("MAP_DIAG")
+                .Replace("<TargetElementGuid>ATT_Cond</TargetElementGuid>", "<TargetElementGuid>ATT_Id</TargetElementGuid>")
+                .Replace("</LinkMappings>", """
+                    <LinkMappingItem><Name>Id2</Name><ElementGuid>LNK_2</ElementGuid><InputLayoutGuid>FLD_ChaveAcesso</InputLayoutGuid><TargetLayoutGuid>ATT_Id</TargetLayoutGuid></LinkMappingItem>
+                    </LinkMappings>
+                    """);
+            mappers.Mappers.Add(new Mapper { MapperGuid = "MAP_DIAG", InputLayoutGuid = "LAY_SOURCE", TargetLayoutGuid = "LAY_TARGET", DecryptedContent = xml });
+            layouts.LayoutsByGuid["LAY_SOURCE"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Origem", DecryptedContent = SourceLayoutXml };
+            layouts.LayoutsByGuid["LAY_TARGET"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Destino", DecryptedContent = TargetLayoutXml };
+
+            var result = await service.GetLayoutTreeAsync("MAP_DIAG", CancellationToken.None);
+
+            var n1 = Assert.Single(result!.Diagnostics!, d => d.Code == "N1_ORDER_SENSITIVE");
+            Assert.Equal("ATT_Id", n1.TargetNodeGuid);
+            Assert.Equal(new[] { "LNK_1", "LNK_2" }, n1.RuleIds);
+            var both = Assert.Single(result.Diagnostics!, d => d.Code == "TARGET_LINK_AND_RULE");
+            Assert.Equal(3, both.RuleIds.Count);
+        }
+
+        [Fact]
+        public async Task LayoutGuid_com_ou_sem_prefixo_LAY_resolve_pela_forma_alternativa()
+        {
+            var (service, mappers, layouts) = BuildService();
+            mappers.Mappers.Add(new Mapper { MapperGuid = "MAP_1", InputLayoutGuid = "SOURCE", TargetLayoutGuid = "LAY_TARGET", DecryptedContent = BuildMapperXml("MAP_1").Replace("LAY_SOURCE", "SOURCE") });
+            layouts.LayoutsByGuid["LAY_SOURCE"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Origem", DecryptedContent = SourceLayoutXml };
+            layouts.LayoutsByGuid["LAY_TARGET"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Destino", DecryptedContent = TargetLayoutXml };
+
+            var result = await service.GetLayoutTreeAsync("MAP_1", CancellationToken.None);
+
+            Assert.NotEmpty(result!.Source.Roots);
+        }
+
+        private async Task<LayoutTreeResponse?> BuildCaseService(string dsl)
+        {
+            var (service, mappers, layouts) = BuildService();
+            mappers.Mappers.Add(new Mapper
+            {
+                MapperGuid = "MAP_CASE", InputLayoutGuid = "LAY_SOURCE", TargetLayoutGuid = "LAY_TARGET",
+                DecryptedContent = BuildMapperXmlComRegraDsl("MAP_CASE").Replace("T.xCond=I.LINHA1/Campo;", dsl),
+            });
+            layouts.LayoutsByGuid["LAY_SOURCE"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Origem", DecryptedContent = SourceLayoutXml };
+            layouts.LayoutsByGuid["LAY_TARGET"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Destino", DecryptedContent = TargetLayoutXml };
+            return await service.GetLayoutTreeAsync("MAP_CASE", CancellationToken.None);
         }
 
         [Fact]
