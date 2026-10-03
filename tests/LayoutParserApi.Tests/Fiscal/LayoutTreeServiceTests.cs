@@ -145,7 +145,11 @@ namespace LayoutParserApi.Tests.Fiscal
             var sourceRoot = Assert.Single(result.Source.Roots);
             Assert.Equal("LIN_LINHA000", sourceRoot.ElementGuid);
             Assert.Equal("group", sourceRoot.Kind);
+            Assert.Equal("txt-line", sourceRoot.NodeType);
+            Assert.Equal("LIN_", sourceRoot.GuidPrefix);
+            Assert.Equal("GroupTagElementVO", sourceRoot.XsiType);
             var sourceLeaf = Assert.Single(sourceRoot.Children);
+            Assert.Equal("txt-field", sourceLeaf.NodeType);
             Assert.Equal("FLD_ChaveAcesso", sourceLeaf.ElementGuid);
             Assert.Equal(1, sourceLeaf.Cardinality!.Min);
             Assert.Equal(1, sourceLeaf.Cardinality.Max);
@@ -153,10 +157,13 @@ namespace LayoutParserApi.Tests.Fiscal
             var targetRoot = Assert.Single(result.Target.Roots);
             var targetAttr = Assert.Single(targetRoot.Children);
             Assert.Equal("attribute", targetAttr.Kind);
+            Assert.Equal("xml-attribute", targetAttr.NodeType);
+            Assert.Equal("xml-tag-group", targetRoot.NodeType);
             Assert.Null(targetAttr.Cardinality);
 
             var rule = Assert.Single(result.Rules);
             Assert.Equal("LNK_1", rule.RuleId);
+            Assert.Equal("link", rule.Origin);
             Assert.Equal("FLD_ChaveAcesso", rule.SourceElementGuid);
             Assert.Equal("ATT_Id", rule.TargetElementGuid);
             Assert.Empty(result.Limitations); // sem regra DSL no mapper, sem limitação a sinalizar
@@ -219,6 +226,7 @@ namespace LayoutParserApi.Tests.Fiscal
             var dsl = Assert.Single(result.DslRules!.Items);
             Assert.Equal(1, result.DslRules.Total);
             Assert.False(dsl.Resolved);
+            Assert.Equal("rule", dsl.Origin);
             Assert.Empty(dsl.SourceNodeGuids);
             Assert.Equal(1, result.DslRules.Unresolved);
         }

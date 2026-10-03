@@ -107,7 +107,7 @@ namespace LayoutParserApi.Services.Fiscal
                 layoutRecord.DecryptedContent, sourceLabel: layoutRecord.Name, log: msg => _logger.LogInformation("{Msg}", msg));
 
             var (kind, legivel) = DetectKind(layoutRecord.DecryptedContent);
-            var dtoRoots = ToDto(roots);
+            var dtoRoots = ToDto(roots, kind);
 
             // Motivo explícito quando a árvore não pôde ser materializada (campo opcional, 200 mantido).
             string? motivo = null;
@@ -140,16 +140,22 @@ namespace LayoutParserApi.Services.Fiscal
             }
         }
 
-        private static IReadOnlyList<LayoutTreeNodeDto> ToDto(IReadOnlyList<LayoutTreeNode> nodes)
-            => nodes.Select(ToDto).ToList();
+        private static IReadOnlyList<LayoutTreeNodeDto> ToDto(IReadOnlyList<LayoutTreeNode> nodes, string layoutKind)
+            => nodes.Select(n => ToDto(n, layoutKind)).ToList();
 
-        private static LayoutTreeNodeDto ToDto(LayoutTreeNode node)
-            => new(
+        private static LayoutTreeNodeDto ToDto(LayoutTreeNode node, string layoutKind)
+        {
+            var prefix = LayoutTreeNodeTypes.PrefixOf(node.ElementGuid);
+            return new(
                 node.ElementGuid,
                 node.Name,
                 node.Kind,
                 node.MinOccurs is null && node.MaxOccurs is null ? null : new LayoutTreeCardinality(node.MinOccurs, node.MaxOccurs),
-                ToDto(node.Children));
+                ToDto(node.Children, layoutKind),
+                LayoutTreeNodeTypes.Classify(layoutKind, node.Kind, prefix),
+                prefix,
+                node.XsiType);
+        }
 
         /// <summary>
         /// Regras = <c>LinkMappingItemVO</c> reais (mapeamento direto campo→campo) — o único ponto

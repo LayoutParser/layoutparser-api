@@ -14,7 +14,56 @@ namespace LayoutParserApi.Models.Dtos.Fiscal
         string Name,
         string Kind,
         LayoutTreeCardinality? Cardinality,
-        IReadOnlyList<LayoutTreeNodeDto> Children);
+        IReadOnlyList<LayoutTreeNodeDto> Children,
+        string NodeType = LayoutTreeNodeTypes.Unknown,
+        string? GuidPrefix = null,
+        string? XsiType = null);
+
+    /// <summary>
+    /// Classificação semântica do nó (aditiva a <c>Kind</c>), derivada do tipo do layout (<c>xml</c>/<c>text</c>),
+    /// do <c>xsi:type</c> e do prefixo do GUID. Layout XML: <c>xml-tag</c>, <c>xml-tag-group</c>, <c>xml-attribute</c>.
+    /// Layout posicional (TXT): <c>txt-line</c> (prefixo <c>LIN_</c>), <c>txt-field</c> (<c>FLD_</c>), <c>txt-group</c>
+    /// (grupo sem prefixo conhecido), <c>txt-attribute</c>. Sem informação suficiente: <c>unknown</c> —
+    /// o front pode refinar com <c>guidPrefix</c>/<c>xsiType</c> crus.
+    /// </summary>
+    public static class LayoutTreeNodeTypes
+    {
+        public const string XmlTag = "xml-tag";
+        public const string XmlTagGroup = "xml-tag-group";
+        public const string XmlAttribute = "xml-attribute";
+        public const string TxtLine = "txt-line";
+        public const string TxtField = "txt-field";
+        public const string TxtGroup = "txt-group";
+        public const string TxtAttribute = "txt-attribute";
+        public const string Unknown = "unknown";
+
+        /// <summary>Prefixo do GUID até o primeiro '_' (ex.: <c>TAG_</c>, <c>FLD_</c>); <c>null</c> se não houver.</summary>
+        public static string? PrefixOf(string? guid)
+        {
+            if (string.IsNullOrEmpty(guid)) return null;
+            var i = guid.IndexOf('_');
+            return i > 0 ? guid[..(i + 1)].ToUpperInvariant() : null;
+        }
+
+        public static string Classify(string layoutKind, string nodeKind, string? guidPrefix)
+        {
+            if (nodeKind == "attribute")
+                return layoutKind == LayoutTreeKinds.Text ? TxtAttribute : layoutKind == LayoutTreeKinds.Xml ? XmlAttribute : Unknown;
+
+            if (layoutKind == LayoutTreeKinds.Xml)
+                return nodeKind == "group" ? XmlTagGroup : XmlTag;
+
+            if (layoutKind == LayoutTreeKinds.Text)
+                return guidPrefix switch
+                {
+                    "LIN_" => TxtLine,
+                    "FLD_" => TxtField,
+                    _ => nodeKind == "group" ? TxtGroup : TxtField,
+                };
+
+            return Unknown;
+        }
+    }
 
     /// <summary>Domínio de <see cref="LayoutTreeSide.Kind"/> realmente emitido hoje (valores inalterados).</summary>
     public static class LayoutTreeKinds
@@ -53,7 +102,14 @@ namespace LayoutParserApi.Models.Dtos.Fiscal
     /// árvore de origem e um nó da árvore de destino, pelos mesmos GUIDs que já aparecem em
     /// <c>MappingExplanation</c> (Slice 4).
     /// </summary>
-    public sealed record LayoutTreeRule(string RuleId, string? SourceElementGuid, string? TargetElementGuid);
+    public sealed record LayoutTreeRule(string RuleId, string? SourceElementGuid, string? TargetElementGuid, string Origin = LayoutTreeRuleOrigins.Link);
+
+    /// <summary>Origem de uma regra: vínculo direto (<c>LinkMappingItemVO</c>) ou regra DSL/condicional (<c>Rule</c> do MapperVO).</summary>
+    public static class LayoutTreeRuleOrigins
+    {
+        public const string Link = "link";
+        public const string Rule = "rule";
+    }
 
     /// <summary>
     /// Contrato de <c>GET .../mappings/{mappingId}/layout-tree</c> (issue #425, ADR de 2026-09-16).
@@ -98,7 +154,8 @@ namespace LayoutParserApi.Models.Dtos.Fiscal
         bool Resolved,
         string? Condition,
         string Description,
-        string? TechnicalDetail);
+        string? TechnicalDetail,
+        string Origin = LayoutTreeRuleOrigins.Rule);
 
     /// <summary>
     /// Página de regras DSL. <c>Total</c> = após o filtro (<c>targetNodeGuid</c>) e antes da paginação;
