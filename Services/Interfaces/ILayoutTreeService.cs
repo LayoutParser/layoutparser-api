@@ -15,6 +15,6 @@ namespace LayoutParserApi.Services.Interfaces
         /// o controller traduz para 404. Nunca lança para layout ausente/ilegível: degrada para
         /// árvore vazia daquele lado (mesmo padrão de <see cref="XslSynth.Core.GuidXPathCatalog"/>).
         /// </summary>
-        Task<LayoutTreeResponse?> GetLayoutTreeAsync(string mappingId, CancellationToken cancellationToken);
+        Task<LayoutTreeResponse?> GetLayoutTreeAsync(string mappingId, CancellationToken cancellationToken, LayoutTreeDslOptions? dslOptions = null);
     }
 }

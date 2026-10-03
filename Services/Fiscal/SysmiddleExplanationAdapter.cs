@@ -193,7 +193,7 @@ namespace LayoutParserApi.Services.Fiscal
         /// por ramo da árvore de decisão (<see cref="StructuredBranch"/>), já que cada ramo tem
         /// condição/origem/destino próprios.
         /// </summary>
-        private IEnumerable<ExplainedRule> ToExplainedRules(MapperRule rule)
+        internal IEnumerable<ExplainedRule> ToExplainedRules(MapperRule rule)
         {
             XslSynth.Prompting.StructuredRule? structured;
             try

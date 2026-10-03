@@ -213,6 +213,41 @@ namespace LayoutParserApi.Tests.Fiscal
 
             // A ausência é sinalizada, não silenciosa.
             Assert.NotEmpty(result.Limitations);
+
+            // Aditivo: a regra DSL aparece em dslRules, sem GUID inventado quando o texto não casa.
+            Assert.NotNull(result.DslRules);
+            var dsl = Assert.Single(result.DslRules!.Items);
+            Assert.Equal(1, result.DslRules.Total);
+            Assert.False(dsl.Resolved);
+            Assert.Empty(dsl.SourceNodeGuids);
+            Assert.Equal(1, result.DslRules.Unresolved);
+        }
+
+        [Fact]
+        public async Task Regra_DSL_com_texto_que_casa_de_forma_univoca_resolve_guids_e_filtra_por_no_de_destino()
+        {
+            var (service, mappers, layouts) = BuildService();
+            mappers.Mappers.Add(new Mapper
+            {
+                MapperGuid = "MAP_DSL2",
+                InputLayoutGuid = "LAY_SOURCE",
+                TargetLayoutGuid = "LAY_TARGET",
+                DecryptedContent = BuildMapperXmlComRegraDsl("MAP_DSL2")
+                    .Replace("T.xCond=I.LINHA1/Campo;", "T.Id=I.LINHA000/ChaveAcesso;"),
+            });
+            layouts.LayoutsByGuid["LAY_SOURCE"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Origem", DecryptedContent = SourceLayoutXml };
+            layouts.LayoutsByGuid["LAY_TARGET"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Destino", DecryptedContent = TargetLayoutXml };
+
+            var result = await service.GetLayoutTreeAsync("MAP_DSL2", CancellationToken.None);
+            var dsl = Assert.Single(result!.DslRules!.Items);
+            Assert.True(dsl.Resolved);
+            Assert.Equal(new[] { "FLD_ChaveAcesso" }, dsl.SourceNodeGuids);
+            Assert.Equal(new[] { "ATT_Id" }, dsl.TargetNodeGuids);
+            Assert.Equal(0, result.DslRules.Unresolved);
+
+            var filtrado = await service.GetLayoutTreeAsync("MAP_DSL2", CancellationToken.None, new LayoutTreeDslOptions("OUTRO_NO"));
+            Assert.Empty(filtrado!.DslRules!.Items);
+            Assert.Equal(0, filtrado.DslRules.Total);
         }
 
         [Fact]

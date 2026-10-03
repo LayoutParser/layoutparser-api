@@ -24,7 +24,7 @@ namespace LayoutParserApi.Tests.Controllers
             public LayoutTreeResponse? Response { get; set; }
             public Exception? ThrowOnCall { get; set; }
 
-            public Task<LayoutTreeResponse?> GetLayoutTreeAsync(string mappingId, CancellationToken cancellationToken)
+            public Task<LayoutTreeResponse?> GetLayoutTreeAsync(string mappingId, CancellationToken cancellationToken, LayoutTreeDslOptions? dslOptions = null)
                 => ThrowOnCall is not null ? throw ThrowOnCall : Task.FromResult(Response);
         }
 
