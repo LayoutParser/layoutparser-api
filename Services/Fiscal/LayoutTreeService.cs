@@ -3,6 +3,9 @@ using System.Xml.Linq;
 using LayoutParserApi.Models.Dtos.Fiscal;
 using LayoutParserApi.Models.Entities;
 using LayoutParserApi.Services.Interfaces;
+using LayoutParserApi.Services.Sysmiddle;
+
+using Microsoft.Extensions.Logging.Abstractions;
 
 using XslSynth.Core;
 
@@ -28,18 +31,22 @@ namespace LayoutParserApi.Services.Fiscal
         private readonly ICachedMapperService _cachedMapperService;
         private readonly ICachedLayoutService _cachedLayoutService;
         private readonly ILogger<LayoutTreeService> _logger;
+        private readonly SysmiddleExplanationAdapter _explainer;
 
         public LayoutTreeService(
             ICachedMapperService cachedMapperService,
             ICachedLayoutService cachedLayoutService,
-            ILogger<LayoutTreeService> logger)
+            ILogger<LayoutTreeService> logger,
+            ISysmiddleFunctionCatalog? functionCatalog = null)
         {
             _cachedMapperService = cachedMapperService;
             _cachedLayoutService = cachedLayoutService;
             _logger = logger;
+            // Mesma tradução de GET .../explanation (ToExplainedRules) — evita duplicar a gramática DSL.
+            _explainer = new SysmiddleExplanationAdapter(cachedMapperService, NullLogger<SysmiddleExplanationAdapter>.Instance, functionCatalog);
         }
 
-        public async Task<LayoutTreeResponse?> GetLayoutTreeAsync(string mappingId, CancellationToken cancellationToken)
+        public async Task<LayoutTreeResponse?> GetLayoutTreeAsync(string mappingId, CancellationToken cancellationToken, LayoutTreeDslOptions? dslOptions = null)
         {
             List<Mapper> mappers;
             try
@@ -61,9 +68,9 @@ namespace LayoutParserApi.Services.Fiscal
 
             var source = await ResolveSideAsync(inputLayoutGuid, cancellationToken);
             var target = await ResolveSideAsync(targetLayoutGuid, cancellationToken);
-            var (rules, limitations) = ResolveRules(mapper);
+            var (rules, limitations, dslRules) = ResolveRules(mapper, source, target, dslOptions ?? new LayoutTreeDslOptions());
 
-            return new LayoutTreeResponse(mapper.MapperGuid, source, target, rules, limitations);
+            return new LayoutTreeResponse(mapper.MapperGuid, source, target, rules, limitations, dslRules);
         }
 
         /// <summary>
@@ -154,7 +161,8 @@ namespace LayoutParserApi.Services.Fiscal
         /// inventa" (mesma regra que rege <see cref="SysmiddleExplanationAdapter"/>). Quando o mapper
         /// tem regras DSL, sinaliza via <c>Limitations</c> — ver <see cref="LayoutTreeResponse"/>.</para>
         /// </summary>
-        private (IReadOnlyList<LayoutTreeRule> Rules, IReadOnlyList<string> Limitations) ResolveRules(Mapper mapper)
+        private (IReadOnlyList<LayoutTreeRule> Rules, IReadOnlyList<string> Limitations, LayoutTreeDslRules? Dsl) ResolveRules(
+            Mapper mapper, LayoutTreeSide source, LayoutTreeSide target, LayoutTreeDslOptions options)
         {
             MapperVo mapperVo;
             try
@@ -164,7 +172,7 @@ namespace LayoutParserApi.Services.Fiscal
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Árvore de layout: MapperVO {MapperGuid} não pôde ser parseado — regras degradam para lista vazia.", mapper.MapperGuid);
-                return (Array.Empty<LayoutTreeRule>(), Array.Empty<string>());
+                return (Array.Empty<LayoutTreeRule>(), Array.Empty<string>(), null);
             }
 
             var rules = mapperVo.LinkMappings
@@ -174,16 +182,109 @@ namespace LayoutParserApi.Services.Fiscal
                     link.TargetGuid))
                 .ToList();
 
-            var limitations = mapperVo.Rules.Count > 0
-                ? new[]
-                {
-                    $"Mapper tem {mapperVo.Rules.Count} regra(s) condicional(is)/DSL que NÃO aparecem em Rules[] — " +
-                    "origem/destino dessas regras não são GUIDs de nó resolvíveis (ver GET .../explanation " +
-                    "para a lista completa, incluindo as DSL, com sourceRefs/targetRefs prefixados I./T.)."
-                }
-                : Array.Empty<string>();
+            if (mapperVo.Rules.Count == 0)
+                return (rules, Array.Empty<string>(), null);
 
-            return (rules, limitations);
+            var dsl = BuildDslRules(mapperVo, source, target, options);
+            var limitations = new[]
+            {
+                dsl.Unresolved > 0
+                    ? $"{dsl.Unresolved} de {mapperVo.Rules.Count} regra(s) condicional(is)/DSL não puderam ser vinculadas a nós da árvore " +
+                      "(texto I./T. ausente, ambíguo ou fora do catálogo) — constam em dslRules.items com resolved=false, só como texto."
+                    : $"Mapper tem {mapperVo.Rules.Count} regra(s) condicional(is)/DSL, todas vinculadas a nós — ver dslRules (não aparecem em Rules[])."
+            };
+
+            return (rules, limitations, dsl);
+        }
+
+        /// <summary>
+        /// Monta <c>dslRules</c>: reaproveita <see cref="SysmiddleExplanationAdapter.ToExplainedRules"/> e resolve
+        /// o texto I./T. para GUIDs SÓ quando casa de forma unívoca (nunca inventa — mesma regra do #430).
+        /// </summary>
+        private LayoutTreeDslRules BuildDslRules(MapperVo mapperVo, LayoutTreeSide source, LayoutTreeSide target, LayoutTreeDslOptions options)
+        {
+            var sourceIndex = new NodeIndex(source.Roots);
+            var targetIndex = new NodeIndex(target.Roots);
+
+            var all = new List<LayoutTreeDslRule>();
+            foreach (var mapperRule in mapperVo.Rules)
+            {
+                var ruleName = mapperRule.Name ?? mapperRule.ElementGuid ?? "regra";
+                IEnumerable<ExplainedRule> explained;
+                try
+                {
+                    explained = _explainer.ToExplainedRules(mapperRule).ToList();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Árvore de layout: regra DSL {Rule} não pôde ser explicada — ignorada em dslRules.", ruleName);
+                    continue;
+                }
+
+                foreach (var r in explained)
+                {
+                    var (srcGuids, srcAll) = sourceIndex.Resolve(r.SourceRefs);
+                    var (tgtGuids, tgtAll) = targetIndex.Resolve(r.TargetRefs);
+                    var opaque = r.SupportLevel == MappingExplanationSupportLevel.Opaque;
+                    all.Add(new LayoutTreeDslRule(
+                        r.RuleId, ruleName, opaque ? "opaque" : "dsl",
+                        r.SupportLevel == MappingExplanationSupportLevel.Authoritative, r.SupportLevel,
+                        r.SourceRefs, r.TargetRefs, srcGuids, tgtGuids,
+                        Resolved: srcAll && tgtAll && r.TargetRefs.Count > 0,
+                        r.Condition, r.HumanDescription, r.TechnicalDetail));
+                }
+            }
+
+            var unresolved = all.Count(r => !r.Resolved);
+            IEnumerable<LayoutTreeDslRule> filtered = all;
+            if (options.TargetNodeGuid is not null)
+                filtered = all.Where(r => r.TargetNodeGuids.Contains(options.TargetNodeGuid, StringComparer.OrdinalIgnoreCase));
+            var list = filtered.ToList();
+            var items = list.Skip(options.Offset).Take(options.Limit).ToList();
+            return new LayoutTreeDslRules(list.Count, unresolved, options.Offset, options.Limit, items);
+        }
+
+        /// <summary>
+        /// Índice nome/caminho → GUID de uma árvore. Texto I./T. (sem prefixo, '@' ignorado, caminho com '/')
+        /// casa primeiro pelo caminho completo (sufixo) e depois pelo nome da folha; só vale se houver
+        /// exatamente UM nó com GUID — caso contrário fica sem resolução.
+        /// </summary>
+        private sealed class NodeIndex
+        {
+            private readonly List<(string[] Path, string? Guid)> _nodes = new();
+
+            public NodeIndex(IReadOnlyList<LayoutTreeNodeDto> roots)
+            {
+                void Walk(LayoutTreeNodeDto n, List<string> prefix)
+                {
+                    prefix.Add(Norm(n.Name));
+                    _nodes.Add((prefix.ToArray(), n.ElementGuid));
+                    foreach (var c in n.Children) Walk(c, prefix);
+                    prefix.RemoveAt(prefix.Count - 1);
+                }
+                foreach (var r in roots) Walk(r, new List<string>());
+            }
+
+            private static string Norm(string s) => s.Trim().TrimStart('@').ToLowerInvariant();
+
+            public (IReadOnlyList<string> Guids, bool AllResolved) Resolve(IReadOnlyList<string> refs)
+            {
+                var guids = new List<string>();
+                var all = refs.Count > 0;
+                foreach (var raw in refs)
+                {
+                    var text = raw.Length > 2 && raw[1] == '.' && (raw[0] == 'I' || raw[0] == 'T') ? raw[2..] : raw;
+                    var segs = text.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Norm).ToArray();
+                    if (segs.Length == 0) { all = false; continue; }
+
+                    var matches = _nodes.Where(n => n.Path.Length >= segs.Length && n.Path.TakeLast(segs.Length).SequenceEqual(segs)).ToList();
+                    if (matches.Count == 1 && !string.IsNullOrEmpty(matches[0].Guid))
+                        guids.Add(matches[0].Guid!);
+                    else
+                        all = false;
+                }
+                return (guids.Distinct(StringComparer.OrdinalIgnoreCase).ToList(), all);
+            }
         }
     }
 }

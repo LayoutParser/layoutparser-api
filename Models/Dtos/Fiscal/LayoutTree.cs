@@ -74,5 +74,42 @@ namespace LayoutParserApi.Models.Dtos.Fiscal
         LayoutTreeSide Source,
         LayoutTreeSide Target,
         IReadOnlyList<LayoutTreeRule> Rules,
-        IReadOnlyList<string> Limitations);
+        IReadOnlyList<string> Limitations,
+        LayoutTreeDslRules? DslRules = null);
+
+    /// <summary>
+    /// Regra condicional/DSL do mapper (aditivo ao <c>rules[]</c>). Reaproveita a tradução de
+    /// <c>GET .../explanation</c>: <c>SourceRefs</c>/<c>TargetRefs</c> são texto prefixado <c>I.</c>/<c>T.</c>.
+    /// <c>SourceNodeGuids</c>/<c>TargetNodeGuids</c> só são preenchidos quando o texto casa de forma
+    /// UNÍVOCA (caminho completo ou nome) com um nó da árvore; ambíguo/inexistente → vazio (nunca inventa).
+    /// <c>Resolved</c> = todas as refs de origem e destino casaram com exatamente um nó (e há ao menos uma).
+    /// <c>Kind</c> ∈ {<c>dsl</c>, <c>opaque</c>} (<c>opaque</c> = fora da gramática/funções não traduzíveis).
+    /// </summary>
+    public sealed record LayoutTreeDslRule(
+        string RuleId,
+        string Name,
+        string Kind,
+        bool Authoritative,
+        string SupportLevel,
+        IReadOnlyList<string> SourceRefs,
+        IReadOnlyList<string> TargetRefs,
+        IReadOnlyList<string> SourceNodeGuids,
+        IReadOnlyList<string> TargetNodeGuids,
+        bool Resolved,
+        string? Condition,
+        string Description,
+        string? TechnicalDetail);
+
+    /// <summary>
+    /// Página de regras DSL. <c>Total</c> = após o filtro (<c>targetNodeGuid</c>) e antes da paginação;
+    /// <c>Unresolved</c> = quantas do mapper inteiro não puderam ser vinculadas a nós.
+    /// </summary>
+    public sealed record LayoutTreeDslRules(int Total, int Unresolved, int Offset, int Limit, IReadOnlyList<LayoutTreeDslRule> Items);
+
+    /// <summary>Opções de <c>dslRules[]</c> no layout-tree: filtro por nó de destino e paginação.</summary>
+    public sealed record LayoutTreeDslOptions(string? TargetNodeGuid = null, int Offset = 0, int Limit = LayoutTreeDslOptions.DefaultLimit)
+    {
+        public const int DefaultLimit = 200;
+        public const int MaxLimit = 500;
+    }
 }

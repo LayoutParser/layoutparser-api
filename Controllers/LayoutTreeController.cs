@@ -1,3 +1,4 @@
+using LayoutParserApi.Models.Dtos.Fiscal;
 using LayoutParserApi.Models.Entities.Identity;
 using LayoutParserApi.Services.Filters;
 using LayoutParserApi.Services.Interfaces;
@@ -34,16 +35,24 @@ namespace LayoutParserApi.Controllers
         /// <summary>
         /// RBAC: qualquer papel de membro (leitura, mesmo espírito de
         /// <c>MappingDraftsController.ListDrafts</c>) — não-membro ou sem identidade → 404
-        /// (<see cref="RequireWorkspaceRoleFilter"/>). <c>mappingId</c> não resolvido no catálogo
+        /// (<see cref="RequireWorkspaceRoleFilter"/>). Query opcional: <c>targetNodeGuid</c> (só as regras DSL
+        /// desse nó de destino), <c>offset</c>/<c>limit</c> (paginação de <c>dslRules.items</c>; limit 1–500, default 200). <c>mappingId</c> não resolvido no catálogo
         /// <c>tbMapper</c> → 404 também (indistinguível, mesmo padrão fail-closed do resto da API).
         /// </summary>
         [HttpGet("layout-tree")]
         [RequireWorkspaceRole(WorkspaceRoleLevel.Viewer)]
-        public async Task<IActionResult> GetLayoutTree(Guid workspaceId, string mappingId, CancellationToken cancellationToken)
+        public async Task<IActionResult> GetLayoutTree(
+            Guid workspaceId, string mappingId, CancellationToken cancellationToken,
+            [FromQuery] string? targetNodeGuid = null, [FromQuery] int offset = 0, [FromQuery] int limit = LayoutTreeDslOptions.DefaultLimit)
         {
             try
             {
-                var tree = await _layoutTreeService.GetLayoutTreeAsync(mappingId, cancellationToken);
+                var tree = await _layoutTreeService.GetLayoutTreeAsync(
+                    mappingId, cancellationToken,
+                    new LayoutTreeDslOptions(
+                        string.IsNullOrWhiteSpace(targetNodeGuid) ? null : targetNodeGuid.Trim(),
+                        Math.Max(0, offset),
+                        Math.Clamp(limit, 1, LayoutTreeDslOptions.MaxLimit)));
                 return tree == null ? NotFound() : Ok(tree);
             }
             catch (Exception ex)
