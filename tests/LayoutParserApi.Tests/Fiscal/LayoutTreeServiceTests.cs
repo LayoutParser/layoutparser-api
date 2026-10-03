@@ -267,6 +267,42 @@ namespace LayoutParserApi.Tests.Fiscal
             Assert.Equal(0, filtrado.DslRules.Total);
         }
 
+        [Fact]
+        public async Task Destino_com_vinculo_e_regra_e_destino_com_N1_geram_diagnosticos_estruturais()
+        {
+            var (service, mappers, layouts) = BuildService();
+            var xml = BuildMapperXmlComRegraDsl("MAP_DIAG")
+                .Replace("<TargetElementGuid>ATT_Cond</TargetElementGuid>", "<TargetElementGuid>ATT_Id</TargetElementGuid>")
+                .Replace("</LinkMappings>", """
+                    <LinkMappingItem><Name>Id2</Name><ElementGuid>LNK_2</ElementGuid><InputLayoutGuid>FLD_ChaveAcesso</InputLayoutGuid><TargetLayoutGuid>ATT_Id</TargetLayoutGuid></LinkMappingItem>
+                    </LinkMappings>
+                    """);
+            mappers.Mappers.Add(new Mapper { MapperGuid = "MAP_DIAG", InputLayoutGuid = "LAY_SOURCE", TargetLayoutGuid = "LAY_TARGET", DecryptedContent = xml });
+            layouts.LayoutsByGuid["LAY_SOURCE"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Origem", DecryptedContent = SourceLayoutXml };
+            layouts.LayoutsByGuid["LAY_TARGET"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Destino", DecryptedContent = TargetLayoutXml };
+
+            var result = await service.GetLayoutTreeAsync("MAP_DIAG", CancellationToken.None);
+
+            var n1 = Assert.Single(result!.Diagnostics!, d => d.Code == "N1_ORDER_SENSITIVE");
+            Assert.Equal("ATT_Id", n1.TargetNodeGuid);
+            Assert.Equal(new[] { "LNK_1", "LNK_2" }, n1.RuleIds);
+            var both = Assert.Single(result.Diagnostics!, d => d.Code == "TARGET_LINK_AND_RULE");
+            Assert.Equal(3, both.RuleIds.Count);
+        }
+
+        [Fact]
+        public async Task LayoutGuid_com_ou_sem_prefixo_LAY_resolve_pela_forma_alternativa()
+        {
+            var (service, mappers, layouts) = BuildService();
+            mappers.Mappers.Add(new Mapper { MapperGuid = "MAP_1", InputLayoutGuid = "SOURCE", TargetLayoutGuid = "LAY_TARGET", DecryptedContent = BuildMapperXml("MAP_1").Replace("LAY_SOURCE", "SOURCE") });
+            layouts.LayoutsByGuid["LAY_SOURCE"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Origem", DecryptedContent = SourceLayoutXml };
+            layouts.LayoutsByGuid["LAY_TARGET"] = new LayoutRecord { LayoutGuid = Guid.Empty, Name = "Destino", DecryptedContent = TargetLayoutXml };
+
+            var result = await service.GetLayoutTreeAsync("MAP_1", CancellationToken.None);
+
+            Assert.NotEmpty(result!.Source.Roots);
+        }
+
         private async Task<LayoutTreeResponse?> BuildCaseService(string dsl)
         {
             var (service, mappers, layouts) = BuildService();

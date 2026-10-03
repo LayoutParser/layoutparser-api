@@ -68,9 +68,9 @@ namespace LayoutParserApi.Services.Fiscal
 
             var source = await ResolveSideAsync(inputLayoutGuid, cancellationToken);
             var target = await ResolveSideAsync(targetLayoutGuid, cancellationToken);
-            var (rules, limitations, dslRules) = ResolveRules(mapper, source, target, dslOptions ?? new LayoutTreeDslOptions());
+            var (rules, limitations, dslRules, diagnostics) = ResolveRules(mapper, source, target, dslOptions ?? new LayoutTreeDslOptions());
 
-            return new LayoutTreeResponse(mapper.MapperGuid, source, target, rules, limitations, dslRules);
+            return new LayoutTreeResponse(mapper.MapperGuid, source, target, rules, limitations, dslRules, diagnostics);
         }
 
         /// <summary>
@@ -90,6 +90,13 @@ namespace LayoutParserApi.Services.Fiscal
             try
             {
                 layoutRecord = await _cachedLayoutService.GetLayoutByGuidAsync(layoutGuid);
+                // O ConnectUs compara o GUID do layout de forma ordinal e o catálogo ora guarda com "LAY_", ora sem:
+                // tenta a forma alternativa antes de degradar a árvore para vazia.
+                if (layoutRecord == null)
+                {
+                    var alternativo = layoutGuid.StartsWith("LAY_", StringComparison.OrdinalIgnoreCase) ? layoutGuid[4..] : "LAY_" + layoutGuid;
+                    layoutRecord = await _cachedLayoutService.GetLayoutByGuidAsync(alternativo);
+                }
             }
             catch (Exception ex)
             {
@@ -178,7 +185,7 @@ namespace LayoutParserApi.Services.Fiscal
         /// inventa" (mesma regra que rege <see cref="SysmiddleExplanationAdapter"/>). Quando o mapper
         /// tem regras DSL, sinaliza via <c>Limitations</c> — ver <see cref="LayoutTreeResponse"/>.</para>
         /// </summary>
-        private (IReadOnlyList<LayoutTreeRule> Rules, IReadOnlyList<string> Limitations, LayoutTreeDslRules? Dsl) ResolveRules(
+        private (IReadOnlyList<LayoutTreeRule> Rules, IReadOnlyList<string> Limitations, LayoutTreeDslRules? Dsl, IReadOnlyList<LayoutTreeDiagnostic> Diagnostics) ResolveRules(
             Mapper mapper, LayoutTreeSide source, LayoutTreeSide target, LayoutTreeDslOptions options)
         {
             MapperVo mapperVo;
@@ -189,7 +196,7 @@ namespace LayoutParserApi.Services.Fiscal
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Árvore de layout: MapperVO {MapperGuid} não pôde ser parseado — regras degradam para lista vazia.", mapper.MapperGuid);
-                return (Array.Empty<LayoutTreeRule>(), Array.Empty<string>(), null);
+                return (Array.Empty<LayoutTreeRule>(), Array.Empty<string>(), null, Array.Empty<LayoutTreeDiagnostic>());
             }
 
             var rules = mapperVo.LinkMappings
@@ -199,8 +206,10 @@ namespace LayoutParserApi.Services.Fiscal
                     link.TargetGuid))
                 .ToList();
 
+            var diagnostics = BuildStructuralDiagnostics(mapperVo);
+
             if (mapperVo.Rules.Count == 0)
-                return (rules, Array.Empty<string>(), null);
+                return (rules, Array.Empty<string>(), null, diagnostics);
 
             var dsl = BuildDslRules(mapperVo, source, target, options);
             var limitations = new[]
@@ -211,7 +220,35 @@ namespace LayoutParserApi.Services.Fiscal
                     : $"Mapper tem {mapperVo.Rules.Count} regra(s) condicional(is)/DSL, todas vinculadas a nós — ver dslRules (não aparecem em Rules[])."
             };
 
-            return (rules, limitations, dsl);
+            return (rules, limitations, dsl, diagnostics);
+        }
+
+        /// <summary>
+        /// Destinos com vínculo + regra (a regra é ignorada no runtime) e destinos com N:1 (ordem importa).
+        /// Só considera GUID de destino explícito — nunca infere por nome.
+        /// </summary>
+        private static IReadOnlyList<LayoutTreeDiagnostic> BuildStructuralDiagnostics(MapperVo mapperVo)
+        {
+            var result = new List<LayoutTreeDiagnostic>();
+            var links = mapperVo.LinkMappings
+                .Where(l => !string.IsNullOrWhiteSpace(l.TargetGuid))
+                .GroupBy(l => l.TargetGuid!, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.Select(l => l.ElementGuid ?? $"link:{l.Name}").ToList(), StringComparer.Ordinal);
+            var rulesByTarget = mapperVo.Rules
+                .Where(r => !string.IsNullOrWhiteSpace(r.TargetElementGuid))
+                .GroupBy(r => r.TargetElementGuid!, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.Select(r => r.ElementGuid ?? r.Name ?? "rule").ToList(), StringComparer.Ordinal);
+
+            foreach (var (target, ids) in links)
+            {
+                if (ids.Count > 1)
+                    result.Add(new LayoutTreeDiagnostic("N1_ORDER_SENSITIVE", target, ids,
+                        $"Destino com {ids.Count} vínculos: o ConnectUs usa o 1º (na ordem do arquivo) cuja origem tem dados."));
+                if (rulesByTarget.TryGetValue(target, out var ruleIds))
+                    result.Add(new LayoutTreeDiagnostic("TARGET_LINK_AND_RULE", target, ids.Concat(ruleIds).ToList(),
+                        "Destino com vínculo e regra: no ConnectUs o vínculo tem precedência e a regra nunca é executada."));
+            }
+            return result;
         }
 
         /// <summary>

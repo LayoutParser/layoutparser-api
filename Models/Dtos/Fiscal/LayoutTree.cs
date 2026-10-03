@@ -174,7 +174,16 @@ namespace LayoutParserApi.Models.Dtos.Fiscal
         LayoutTreeSide Target,
         IReadOnlyList<LayoutTreeRule> Rules,
         IReadOnlyList<string> Limitations,
-        LayoutTreeDslRules? DslRules = null);
+        LayoutTreeDslRules? DslRules = null,
+        IReadOnlyList<LayoutTreeDiagnostic>? Diagnostics = null);
+
+    /// <summary>
+    /// Diagnóstico estrutural do mapper que o ConnectUs não emite (comportamento do motor 4.4.1):
+    /// <c>TARGET_LINK_AND_RULE</c> (destino com vínculo E regra — a regra nunca roda) e
+    /// <c>N1_ORDER_SENSITIVE</c> (destino com mais de um vínculo — vence o 1º com dado, na ordem do arquivo).
+    /// <c>RuleIds</c> lista vínculos/regras envolvidos, na ordem do arquivo.
+    /// </summary>
+    public sealed record LayoutTreeDiagnostic(string Code, string TargetNodeGuid, IReadOnlyList<string> RuleIds, string Message);
 
     /// <summary>
     /// Regra condicional/DSL do mapper (aditivo ao <c>rules[]</c>). Reaproveita a tradução de
