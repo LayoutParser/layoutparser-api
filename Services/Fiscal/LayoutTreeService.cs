@@ -140,21 +140,32 @@ namespace LayoutParserApi.Services.Fiscal
             }
         }
 
-        private static IReadOnlyList<LayoutTreeNodeDto> ToDto(IReadOnlyList<LayoutTreeNode> nodes, string layoutKind)
-            => nodes.Select(n => ToDto(n, layoutKind)).ToList();
+        private static IReadOnlyList<LayoutTreeNodeDto> ToDto(IReadOnlyList<LayoutTreeNode> nodes, string layoutKind, string parentPath = "")
+            => nodes.Select(n => ToDto(n, layoutKind, parentPath)).ToList();
 
-        private static LayoutTreeNodeDto ToDto(LayoutTreeNode node, string layoutKind)
+        /// <summary>
+        /// <c>XPath</c> segue o <c>FullXPath</c> do ConnectUs: nomes separados por '/', absoluto, sem o nome do layout,
+        /// sem '@' em atributo; nós com <c>ShowInPath=false</c> não entram (e ficam com <c>XPath</c> nulo).
+        /// </summary>
+        private static LayoutTreeNodeDto ToDto(LayoutTreeNode node, string layoutKind, string parentPath)
         {
             var prefix = LayoutTreeNodeTypes.PrefixOf(node.ElementGuid);
+            var nodeType = LayoutTreeNodeTypes.Classify(layoutKind, node.Kind, prefix, node.XsiType);
+            var (labelPt, iconKey, showInPath) = LayoutTreeNodeTypes.Presentation(nodeType);
+            var path = showInPath ? (parentPath.Length == 0 ? node.Name : parentPath + "/" + node.Name) : parentPath;
             return new(
                 node.ElementGuid,
                 node.Name,
                 node.Kind,
                 node.MinOccurs is null && node.MaxOccurs is null ? null : new LayoutTreeCardinality(node.MinOccurs, node.MaxOccurs),
-                ToDto(node.Children, layoutKind),
-                LayoutTreeNodeTypes.Classify(layoutKind, node.Kind, prefix),
+                ToDto(node.Children, layoutKind, path),
+                nodeType,
                 prefix,
-                node.XsiType);
+                node.XsiType,
+                labelPt,
+                iconKey,
+                showInPath,
+                showInPath ? path : null);
         }
 
         /// <summary>
@@ -229,15 +240,17 @@ namespace LayoutParserApi.Services.Fiscal
 
                 foreach (var r in explained)
                 {
-                    var (srcGuids, srcAll) = sourceIndex.Resolve(r.SourceRefs);
-                    var (tgtGuids, tgtAll) = targetIndex.Resolve(r.TargetRefs);
+                    var diagnostics = new List<string>();
+                    var (srcGuids, srcAll) = sourceIndex.Resolve(r.SourceRefs, caseSensitive: false, diagnostics);
+                    var (tgtGuids, tgtAll) = targetIndex.Resolve(r.TargetRefs, caseSensitive: true, diagnostics);
                     var opaque = r.SupportLevel == MappingExplanationSupportLevel.Opaque;
                     all.Add(new LayoutTreeDslRule(
                         r.RuleId, ruleName, opaque ? "opaque" : "dsl",
                         r.SupportLevel == MappingExplanationSupportLevel.Authoritative, r.SupportLevel,
                         r.SourceRefs, r.TargetRefs, srcGuids, tgtGuids,
                         Resolved: srcAll && tgtAll && r.TargetRefs.Count > 0,
-                        r.Condition, r.HumanDescription, r.TechnicalDetail));
+                        r.Condition, r.HumanDescription, r.TechnicalDetail,
+                        Diagnostics: diagnostics.Distinct().ToList()));
                 }
             }
 
@@ -251,43 +264,50 @@ namespace LayoutParserApi.Services.Fiscal
         }
 
         /// <summary>
-        /// Índice nome/caminho → GUID de uma árvore. Texto I./T. (sem prefixo, '@' ignorado, caminho com '/')
-        /// casa primeiro pelo caminho completo (sufixo) e depois pelo nome da folha; só vale se houver
-        /// exatamente UM nó com GUID — caso contrário fica sem resolução.
+        /// Índice caminho absoluto → GUID, na semântica do ConnectUs (<c>FullXPath</c>): <c>I.</c> compara sem
+        /// diferenciar caixa e <c>T.</c> com caixa exata. Só vale se houver exatamente UM nó com GUID; mais de um
+        /// (irmãos homônimos — o ConnectUs usaria o 1º em silêncio) ou nenhum → sem GUID, com diagnóstico
+        /// (<c>REF_AMBIGUOUS</c>, <c>REF_UNRESOLVED</c>, <c>REF_T_CASE_MISMATCH</c>).
         /// </summary>
         private sealed class NodeIndex
         {
-            private readonly List<(string[] Path, string? Guid)> _nodes = new();
+            private readonly List<(string XPath, string? Guid)> _nodes = new();
 
             public NodeIndex(IReadOnlyList<LayoutTreeNodeDto> roots)
             {
-                void Walk(LayoutTreeNodeDto n, List<string> prefix)
+                void Walk(LayoutTreeNodeDto n)
                 {
-                    prefix.Add(Norm(n.Name));
-                    _nodes.Add((prefix.ToArray(), n.ElementGuid));
-                    foreach (var c in n.Children) Walk(c, prefix);
-                    prefix.RemoveAt(prefix.Count - 1);
+                    if (n.XPath is not null) _nodes.Add((n.XPath, n.ElementGuid));
+                    foreach (var c in n.Children) Walk(c);
                 }
-                foreach (var r in roots) Walk(r, new List<string>());
+                foreach (var r in roots) Walk(r);
             }
 
-            private static string Norm(string s) => s.Trim().TrimStart('@').ToLowerInvariant();
-
-            public (IReadOnlyList<string> Guids, bool AllResolved) Resolve(IReadOnlyList<string> refs)
+            public (IReadOnlyList<string> Guids, bool AllResolved) Resolve(IReadOnlyList<string> refs, bool caseSensitive, List<string> diagnostics)
             {
                 var guids = new List<string>();
                 var all = refs.Count > 0;
                 foreach (var raw in refs)
                 {
                     var text = raw.Length > 2 && raw[1] == '.' && (raw[0] == 'I' || raw[0] == 'T') ? raw[2..] : raw;
-                    var segs = text.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Norm).ToArray();
-                    if (segs.Length == 0) { all = false; continue; }
+                    text = text.Trim().Replace("/@", "/").TrimStart('@');
+                    if (text.Length == 0) { all = false; diagnostics.Add("REF_UNRESOLVED"); continue; }
 
-                    var matches = _nodes.Where(n => n.Path.Length >= segs.Length && n.Path.TakeLast(segs.Length).SequenceEqual(segs)).ToList();
+                    var cmp = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+                    var matches = _nodes.Where(n => string.Equals(n.XPath, text, cmp)).ToList();
                     if (matches.Count == 1 && !string.IsNullOrEmpty(matches[0].Guid))
+                    {
                         guids.Add(matches[0].Guid!);
+                        continue;
+                    }
+
+                    all = false;
+                    if (matches.Count > 1)
+                        diagnostics.Add("REF_AMBIGUOUS");
+                    else if (caseSensitive && _nodes.Any(n => string.Equals(n.XPath, text, StringComparison.OrdinalIgnoreCase)))
+                        diagnostics.Add("REF_T_CASE_MISMATCH");
                     else
-                        all = false;
+                        diagnostics.Add("REF_UNRESOLVED");
                 }
                 return (guids.Distinct(StringComparer.OrdinalIgnoreCase).ToList(), all);
             }

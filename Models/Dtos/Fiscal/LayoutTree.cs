@@ -17,7 +17,11 @@ namespace LayoutParserApi.Models.Dtos.Fiscal
         IReadOnlyList<LayoutTreeNodeDto> Children,
         string NodeType = LayoutTreeNodeTypes.Unknown,
         string? GuidPrefix = null,
-        string? XsiType = null);
+        string? XsiType = null,
+        string? LabelPt = null,
+        string? IconKey = null,
+        bool ShowInPath = true,
+        string? XPath = null);
 
     /// <summary>
     /// Classificação semântica do nó (aditiva a <c>Kind</c>), derivada do tipo do layout (<c>xml</c>/<c>text</c>),
@@ -35,7 +39,33 @@ namespace LayoutParserApi.Models.Dtos.Fiscal
         public const string TxtField = "txt-field";
         public const string TxtGroup = "txt-group";
         public const string TxtAttribute = "txt-attribute";
+        public const string TxtRepeaterGroup = "txt-repeater-group";
+        public const string TxtGrouper = "txt-grouper";
+        public const string TxtCharIgnoreGroup = "txt-char-ignore-group";
+        public const string GroupWithoutOrder = "group-without-order";
+        public const string JsonObject = "json-object";
+        public const string JsonValue = "json-value";
         public const string Unknown = "unknown";
+
+        /// <summary>
+        /// Rótulo PT (constantes <c>*Key</c> do desktop) e chave de ícone (<c>ImagesNameConst</c>) por <c>nodeType</c>;
+        /// <c>ShowInPath=false</c> = nó que não entra em <c>I.</c>/<c>T.</c>/"Copiar XPath" no ConnectUs.
+        /// </summary>
+        public static (string? LabelPt, string? IconKey, bool ShowInPath) Presentation(string nodeType) => nodeType switch
+        {
+            TxtLine => ("Linha", "line", true),
+            TxtField => ("Campo", "field", true),
+            TxtRepeaterGroup => ("Grupo Repetidor", "repeaterGroup", true),
+            TxtGrouper => ("Agrupador", "grouper", true),
+            TxtCharIgnoreGroup => ("Grupo Ignorador de Caracter", "characterIgnoreGroup", false),
+            GroupWithoutOrder => ("Grupo Sem Ordem", "groupWithoutOrder", false),
+            XmlTagGroup => ("Tag Grupo", "groupTag", true),
+            XmlTag => ("Tag", "tag", true),
+            XmlAttribute => ("Atributo", "attribute", true),
+            JsonObject => ("Objeto", "jsonObject", true),
+            JsonValue => ("Valor", "field", true),
+            _ => (null, null, true),
+        };
 
         /// <summary>Prefixo do GUID até o primeiro '_' (ex.: <c>TAG_</c>, <c>FLD_</c>); <c>null</c> se não houver.</summary>
         public static string? PrefixOf(string? guid)
@@ -45,8 +75,21 @@ namespace LayoutParserApi.Models.Dtos.Fiscal
             return i > 0 ? guid[..(i + 1)].ToUpperInvariant() : null;
         }
 
-        public static string Classify(string layoutKind, string nodeKind, string? guidPrefix)
+        public static string Classify(string layoutKind, string nodeKind, string? guidPrefix, string? xsiType = null)
         {
+            // O xsi:type é a fonte da verdade; o prefixo do GUID é só fallback (convenção de criação no editor).
+            switch (xsiType)
+            {
+                case "LineElementVO": return TxtLine;
+                case "FieldElementVO": return TxtField;
+                case "RepeaterGroupElementVO": return TxtRepeaterGroup;
+                case "GrouperElementVO": return TxtGrouper;
+                case "CharacterIgnoreGroupElementVO": return TxtCharIgnoreGroup;
+                case "GroupWithoutOrderElementVO": return GroupWithoutOrder;
+                case "JsonObjectElementVO": return JsonObject;
+                case "JsonValueElementVO": return JsonValue;
+            }
+
             if (nodeKind == "attribute")
                 return layoutKind == LayoutTreeKinds.Text ? TxtAttribute : layoutKind == LayoutTreeKinds.Xml ? XmlAttribute : Unknown;
 
@@ -155,7 +198,8 @@ namespace LayoutParserApi.Models.Dtos.Fiscal
         string? Condition,
         string Description,
         string? TechnicalDetail,
-        string Origin = LayoutTreeRuleOrigins.Rule);
+        string Origin = LayoutTreeRuleOrigins.Rule,
+        IReadOnlyList<string>? Diagnostics = null);
 
     /// <summary>
     /// Página de regras DSL. <c>Total</c> = após o filtro (<c>targetNodeGuid</c>) e antes da paginação;
